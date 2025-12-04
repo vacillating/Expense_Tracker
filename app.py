@@ -14,12 +14,12 @@ db = DBManager()
 # Constants
 CATEGORIES = [
     "房租 (Rent)", 
-    "餐饮 (Dine&grocery)", 
+    "餐饮 (Dine & Grocery)", 
     "交通 (Transport)", 
     "购物 (Shopping)", 
     "娱乐 (Entertainment)", 
     "其他 (Other)", 
-    "医疗（medical)"
+    "医疗（Medical)"
 ]
 
 # Title
