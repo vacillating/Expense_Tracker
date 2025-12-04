@@ -19,7 +19,7 @@ CATEGORIES = [
     "购物 (Shopping)", 
     "娱乐 (Entertainment)", 
     "其他 (Other)", 
-    "医疗（Medical)"
+    "医疗（Medical）"
 ]
 
 # Title
@@ -60,7 +60,7 @@ if page == "📊 看账本 (Dashboard)":
             (target_date, "房租 (Rent)", 600.0, "Fixed Rent", "Expense"),
             (target_date, "其他 (Other)", 25.0, "US Mobile", "Expense"),
             (target_date, "娱乐 (Entertainment)", 34.93, "Subscription", "Expense"),
-            (target_date, "医疗 (Medical)", 5.0, "降压药", "Expense"),
+            (target_date, "医疗 （Medical）", 5.0, "降压药", "Expense"),
         ]
         db.add_transactions_bulk(fixed_expenses)
         st.sidebar.success("Fixed expenses loaded!")
