@@ -15,83 +15,99 @@ Designed to replace complex Excel spreadsheets with a clean UI, rapid data entry
 - **Dual Modes**:
   - **➕ Quick Log** – distraction-free, fast transaction entry
   - **📊 Dashboard** – full analytics and data management
-- **Google Sheets-style grid** for inline editing and deletion
-- **One-click Monthly Reset** – auto load recurring fixed expenses
+- **Google Sheets-style grid** for inline editing, batch entry, and deletion
+- **One-click Monthly Reset** – auto-load recurring fixed expenses (e.g., rent, phone bill)
 
 ### 📈 Visual Analysis
 - **Real-time metrics**: total spent + transaction count
 - Interactive Plotly charts:
-  - 🥧 Pie chart by category
-  - 📊 Bar chart comparison
+  - 🥧 **Pie chart**: expense breakdown by category
+  - 📊 **Bar chart**: category spending comparison
 
 ### 💾 Data Management
-- **SQLite backend** (zero-config local DB)
-- **Excel export** with year/month filter
-- **Resilient deletion logic** to avoid Streamlit sync bugs
+- **SQLite backend** (zero-config local storage)
+- **Excel export** with year/month filters
+- **Robust deletion logic** to avoid Streamlit state sync bugs (deleted rows stay deleted)
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Streamlit |
-| Data | Pandas |
-| Charts | Plotly Express |
-| Database | SQLite3 |
-| Export | OpenPyXL |
+| Layer     | Technology      |
+|----------|-----------------|
+| Frontend | Streamlit       |
+| Data     | Pandas          |
+| Charts   | Plotly Express  |
+| Database | SQLite3         |
+| Export   | OpenPyXL        |
 
 ---
 
 ## 🚀 Quick Start
 
 ### 1️⃣ Prerequisites
-Python **3.8+** installed
+- Python **3.8+** installed
 
 ### 2️⃣ Installation
 ```bash
-git clone https://github.com/xxx/money-manager.git
+git clone https://github.com/your-username/money-manager.git
 cd money-manager
 pip install -r requirements.txt
-3️⃣ Run the App
-bash
-Copy code
+```
+
+### 3️⃣ Run the App
+```bash
 streamlit run app.py
-Then open: http://localhost:8501
+```
 
-📂 Project Structure
-plaintext
-Copy code
+Then open: <http://localhost:8501>
+
+---
+
+## 📂 Project Structure
+```plaintext
 money-manager/
-├── app.py              # Main UI & logic
-├── database.py         # SQLite CRUD engine
-├── finance.db          # Auto-generated local DB
-├── requirements.txt    # Dependencies
+├── app.py              # Main application entry point (UI & logic)
+├── database.py         # SQLite CRUD operations
+├── finance.db          # SQLite database (auto-generated on first run)
+├── requirements.txt    # Project dependencies
 └── README.md           # Documentation
-☁️ Deployment (Streamlit Cloud)
-Push to GitHub
+```
 
-Log in to https://share.streamlit.io
+---
 
-New App → select repo
+## ☁️ Deployment (Streamlit Community Cloud)
 
-App file path: app.py
+1. Push this code to a **GitHub repository**
+2. Log in to https://share.streamlit.io
+3. Click **“New app”** and select your repository
+4. Set **Main file path** to: `app.py`
+5. Click **Deploy**
 
-Deploy & enjoy mobile access 🎉
+You can now access your finance manager from any device via the generated URL 🎉
 
-📝 Roadmap
-Status	Feature
-✅	CRUD system
-✅	Interactive charts
-✅	Stable delete logic
-🔜	Google Sheets backend
-🔜	Budget alerts
-🔜	Income tracking
+---
 
-🤝 Contributing
-PRs / issues are welcome! Check the Issues tab for opportunities.
+## 📝 Roadmap & To-Do
 
-📄 License
-MIT License — see LICENSE for details.
+- [x] Implement core CRUD functionality (Create, Read, Update, Delete)
+- [x] Add interactive visualizations (Pie & Bar charts)
+- [x] Fix Streamlit state synchronization bugs (deletion logic)
+- [ ] v3.0: Migrate backend to Google Sheets for cloud persistence
+- [ ] Add budget limit warnings/notifications
+- [ ] Add optional “Income” tracking
 
-Built with ❤️ by Gary Sun
+---
+
+## 🤝 Contributing
+Contributions, issues, and feature requests are welcome!  
+Feel free to open an issue or submit a pull request.
+
+---
+
+## 📄 License
+This project is licensed under the **MIT License** – see the `LICENSE` file for details.
+
+---
+
+Built with ❤️ by **Gary Sun**
