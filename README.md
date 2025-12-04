@@ -1,111 +1,97 @@
-# 💰 Personal Expense Tracker
+# 💰 Personal Finance Manager
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://streamlit.io)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A lightweight, robust, and interactive personal expense tracker built with **Python** and **Streamlit**. Designed to replace complex Excel spreadsheets with a clean UI, rapid data entry, and real-time visualization.
+A lightweight, robust, and interactive personal expense tracker built with **Python** and **Streamlit**.  
+Designed to replace complex Excel spreadsheets with a clean UI, rapid data entry, and real-time visualization.
 
 ---
 
 ## ✨ Key Features
 
 ### 🚀 Efficient Workflow
-* **Dual Modes**:
-    * **➕ Quick Log**: A distraction-free interface designed solely for rapid transaction entry.
-    * **📊 Dashboard**: A comprehensive view for data management and analysis.
-* **Google Sheets-style Grid**: An editable data table that supports batch entry, inline editing, and deletion.
-* **Smart "One-Click" Monthly Reset**: Automatically load recurring fixed expenses (e.g., Rent, Phone Bill) with a single button click in the sidebar.
+- **Dual Modes**:
+  - **➕ Quick Log** – distraction-free, fast transaction entry
+  - **📊 Dashboard** – full analytics and data management
+- **Google Sheets-style grid** for inline editing and deletion
+- **One-click Monthly Reset** – auto load recurring fixed expenses
 
 ### 📈 Visual Analysis
-* **Real-time Metrics**: Instantly track Total Spent and Transaction Counts.
-* **Interactive Charts** (Powered by Plotly):
-    * 🥧 **Pie Chart**: Visual breakdown of expenses by category.
-    * 📊 **Bar Chart**: Side-by-side comparison of total spending per category.
+- **Real-time metrics**: total spent + transaction count
+- Interactive Plotly charts:
+  - 🥧 Pie chart by category
+  - 📊 Bar chart comparison
 
 ### 💾 Data Management
-* **Robust Backend**: Currently powered by **SQLite** for zero-configuration local storage. (Codebase is extensible to Google Sheets).
-* **Excel Export**: Filter your data by year/month and download reports as `.xlsx` files.
-* **Bug-Free Deletion**: Implements custom callback logic to resolve Streamlit's common "state synchronization" issues, ensuring deleted rows stay deleted.
+- **SQLite backend** (zero-config local DB)
+- **Excel export** with year/month filter
+- **Resilient deletion logic** to avoid Streamlit sync bugs
 
 ---
 
 ## 🛠️ Tech Stack
 
-* **Frontend**: [Streamlit](https://streamlit.io/)
-* **Data Manipulation**: [Pandas](https://pandas.pydata.org/)
-* **Visualization**: [Plotly Express](https://plotly.com/python/plotly-express/)
-* **Database**: SQLite3 (Standard Python Library)
-* **Export Engine**: OpenPyXL
+| Layer | Technology |
+|-------|------------|
+| Frontend | Streamlit |
+| Data | Pandas |
+| Charts | Plotly Express |
+| Database | SQLite3 |
+| Export | OpenPyXL |
 
 ---
 
 ## 🚀 Quick Start
 
-Follow these steps to run the app on your local machine.
+### 1️⃣ Prerequisites
+Python **3.8+** installed
 
-### 1. Prerequisites
-Ensure you have Python 3.8 or higher installed.
-
-### 2. Installation
-Clone this repository or download the files, then navigate to the project directory:
-
+### 2️⃣ Installation
 ```bash
+git clone https://github.com/xxx/money-manager.git
 cd money-manager
-Install the required dependencies:
-
-Bash
-
 pip install -r requirements.txt
-3. Run the App
-Launch the Streamlit server:
-
-Bash
-
+3️⃣ Run the App
+bash
+Copy code
 streamlit run app.py
-Your default browser should open automatically at http://localhost:8501.
+Then open: http://localhost:8501
 
 📂 Project Structure
-Plaintext
-
+plaintext
+Copy code
 money-manager/
-├── app.py              # Main application entry point (UI & Logic)
-├── database.py         # Backend logic (SQLite CRUD operations)
-├── finance.db          # SQLite database (Auto-generated on first run)
-├── requirements.txt    # Project dependencies
+├── app.py              # Main UI & logic
+├── database.py         # SQLite CRUD engine
+├── finance.db          # Auto-generated local DB
+├── requirements.txt    # Dependencies
 └── README.md           # Documentation
-☁️ Deployment (How to put it online)
-This app is optimized for Streamlit Community Cloud.
+☁️ Deployment (Streamlit Cloud)
+Push to GitHub
 
-Push this code to a GitHub Repository.
+Log in to https://share.streamlit.io
 
-Log in to share.streamlit.io.
+New App → select repo
 
-Click "New App" and select your repository.
+App file path: app.py
 
-Set the main file path to app.py.
+Deploy & enjoy mobile access 🎉
 
-Click Deploy!
-
-Now you can access your finance manager from any mobile device via the URL.
-
-📝 Roadmap & To-Do
-[x] Implement core CRUD functionality (Create, Read, Update, Delete).
-
-[x] Add interactive visualizations (Pie & Bar charts).
-
-[x] Fix Streamlit state synchronization bugs (Deletion logic).
-
-[ ] v3.0 Upgrade: Migrate backend to Google Sheets for cloud persistence.
-
-[ ] Add budget limit warnings/notifications.
-
-[ ] Add "Income" tracking toggle.
+📝 Roadmap
+Status	Feature
+✅	CRUD system
+✅	Interactive charts
+✅	Stable delete logic
+🔜	Google Sheets backend
+🔜	Budget alerts
+🔜	Income tracking
 
 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check the issues page if you want to contribute.
+PRs / issues are welcome! Check the Issues tab for opportunities.
 
 📄 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License — see LICENSE for details.
 
 Built with ❤️ by Gary Sun
