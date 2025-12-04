@@ -59,7 +59,7 @@ if page == "📊 看账本 (Dashboard)":
         fixed_expenses = [
             (target_date, "房租 (Rent)", 600.0, "Fixed Rent", "Expense"),
             (target_date, "其他 (Other)", 25.0, "US Mobile", "Expense"),
-            (target_date, "娱乐 (Entertainment)", 34.93, "Subscription", "Expense")
+            (target_date, "娱乐 (Entertainment)", 34.93, "Subscription", "Expense"),
             (target_date, "医疗 (Medical)", 5.0, "降压药", "Expense"),
         ]
         db.add_transactions_bulk(fixed_expenses)
