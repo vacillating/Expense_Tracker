@@ -179,3 +179,5 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+streamlit-finance-480218-1cb9f2e57c80.json
+/.streamlit
