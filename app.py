@@ -86,7 +86,7 @@ if page == "➕ 记一笔 (Quick Log)":
             st.success(f"✅ Saved: {category} - ${amount:.2f}")
 
 # Page 2: Dashboard
-elif page == "📊 看账本 (Dashboard)":
+if page == "📊 看账本 (Dashboard)":
     # Helper to filter data
     def filter_data(df, year, month):
         df['date'] = pd.to_datetime(df['date'])
