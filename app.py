@@ -23,7 +23,7 @@ CATEGORIES = [
 ]
 
 # Title
-st.title("💰 Personal Finance Manager v2.2")
+st.title("💰 Personal Finance Manager")
 
 # Navigation
 page = st.sidebar.radio("Navigation", ["➕ 记一笔 (Quick Log)", "📊 看账本 (Dashboard)"])
@@ -164,7 +164,7 @@ elif page == "📊 看账本 (Dashboard)":
                 for index in changes["deleted_rows"]:
                     try:
                         # 只要 database.py 里有 commit，这里就会永久删除
-                        row_id = int(st.session_state["df_current_view"].iloc[index]["id"])
+                        row_id = str(st.session_state["df_current_view"].iloc[index]["id"])
                         db.delete_transaction(row_id)
                         needs_rerun = True
                         st.toast(f"🗑️ 已从数据库永久删除记录 ID: {row_id}") # 成功提示
