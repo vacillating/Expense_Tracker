@@ -50,8 +50,8 @@ Designed to replace complex Excel spreadsheets with a clean UI, rapid data entry
 
 ### 2️⃣ Installation
 ```bash
-git clone https://github.com/your-username/money-manager.git
-cd money-manager
+git clone https://github.com/vacillating/Expense_Tracker.git
+cd Expense_Tracker
 pip install -r requirements.txt
 ```
 
