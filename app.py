@@ -28,44 +28,6 @@ st.title("💰 Personal Finance Manager")
 # Navigation
 page = st.sidebar.radio("Navigation", ["➕ 记一笔 (Quick Log)", "📊 看账本 (Dashboard)"])
 
-# Shared Sidebar Filters (Global or Dashboard specific? User asked for split. Let's keep filters global for Dashboard, but maybe hide for Quick Log to keep it clean?)
-# "Quick Log" should be clean.
-# Let's put filters inside the Dashboard logic or keep them sidebar but only show if Dashboard.
-
-if page == "📊 看账本 (Dashboard)":
-    st.sidebar.header("Filters")
-    today = datetime.today()
-    current_year = today.year
-    years = list(range(current_year - 5, current_year + 6))
-    selected_year = st.sidebar.selectbox("Year", years, index=5)
-
-    months = ["All", "January", "February", "March", "April", "May", "June", 
-              "July", "August", "September", "October", "November", "December"]
-    selected_month = st.sidebar.selectbox("Month", months, index=today.month)
-
-    # Monthly Setup
-    st.sidebar.markdown("---")
-    st.sidebar.header("Monthly Setup")
-    monthly_budget = st.sidebar.number_input("Monthly Budget ($)", value=2000.0, step=100.0)
-
-    if st.sidebar.button("Load Fixed Expenses"):
-        if selected_month == "All":
-            target_date = today.strftime("%Y-%m-%d")
-            st.sidebar.warning(f"Month not selected. Adding to current date: {target_date}")
-        else:
-            month_index = months.index(selected_month)
-            target_date = datetime(selected_year, month_index, 1).strftime("%Y-%m-%d")
-        
-        fixed_expenses = [
-            (target_date, "房租 (Rent)", 600.0, "Fixed Rent", "Expense"),
-            (target_date, "其他 (Other)", 25.0, "US Mobile", "Expense"),
-            (target_date, "娱乐 (Entertainment)", 34.93, "Subscription", "Expense"),
-            (target_date, "医疗 （Medical）", 5.0, "降压药", "Expense"),
-        ]
-        db.add_transactions_bulk(fixed_expenses)
-        st.sidebar.success("Fixed expenses loaded!")
-        st.rerun()
-
 # Page 1: Quick Log
 if page == "➕ 记一笔 (Quick Log)":
     st.header("Quick Log")
@@ -126,7 +88,8 @@ elif page == "📊 看账本 (Dashboard)":
         fixed_expenses = [
             (target_date, "房租 (Rent)", 600.0, "Fixed Rent", "Expense"),
             (target_date, "其他 (Other)", 25.0, "US Mobile", "Expense"),
-            (target_date, "娱乐 (Entertainment)", 34.93, "Subscription", "Expense")
+            (target_date, "娱乐 (Entertainment)", 34.93, "Subscription", "Expense"),
+            (target_date, "医疗 (Medical)", 5.0, "降压药", "Expense"),
         ]
         db.add_transactions_bulk(fixed_expenses)
         st.sidebar.success("Fixed expenses loaded!")
