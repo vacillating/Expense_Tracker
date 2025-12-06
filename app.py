@@ -6,7 +6,7 @@ from database import DBManager
 from io import BytesIO
 
 # Page Config
-st.set_page_config(page_title="Personal Finance Manager v2.2", layout="wide")
+st.set_page_config(page_title="Personal Finance Manager", layout="wide")
 
 # Initialize DB
 db = DBManager()
@@ -19,7 +19,7 @@ CATEGORIES = [
     "购物 (Shopping)", 
     "娱乐 (Entertainment)", 
     "其他 (Other)", 
-    "医疗（Medical）"
+    "医疗 (Medical)"
 ]
 # 定义固定支出模板 (全局配置)
 # 格式: (Category, Amount, Note) -> 不包含日期，因为日期是动态的
@@ -233,6 +233,8 @@ elif page == "📊 看账本 (Dashboard)":
     
     # 指标 3: 智能预测 (剥离房租后的生活费预测)
     col3.metric(metric_label, metric_value, delta=metric_delta, delta_color=delta_color)
+
+    
     # --- 可视化图表 (Visualizations) ---
     st.header("Visualizations")
     if not df_filtered.empty:
