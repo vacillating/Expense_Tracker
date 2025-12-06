@@ -131,18 +131,54 @@ elif page == "📊 看账本 (Dashboard)":
     col1.metric(metric_label, f"${total_spent:,.2f}")
     col2.metric("Transactions", count)
 
-    # --- 可视化图表 (智能切换) ---
+    # --- 可视化图表 (Visualizations) ---
     st.header("Visualizations")
     if not df_filtered.empty:
-        # 场景 A: 看了具体分类 (例如：只看餐饮) -> 显示每日趋势
+        
+        # 场景 A: 看了具体分类 (Single Category View)
         if selected_category != "All":
-            st.info(f"👀 Viewing details for: **{selected_category}**")
-            # 每日趋势图
-            daily_trend = df_filtered.groupby('date')['amount'].sum().reset_index()
-            fig_trend = px.bar(daily_trend, x='date', y='amount', title=f'Daily Spending Trend ({selected_category})')
-            st.plotly_chart(fig_trend, use_container_width=True)
+            # 计算该分类占总支出的比例
+            # (需要先算一下总账，为了简单，我们可以重新基于 db 算，或者简单展示当前数据)
             
-        # 场景 B: 看了所有分类 -> 显示饼图和对比柱状图
+            col_c1, col_c2 = st.columns(2)
+            
+            with col_c1:
+                st.subheader(f"🔍 Top Spending in {selected_category}")
+                # 方案二：该分类下最贵的 5 笔消费 (排行榜)
+                top_expenses = df_filtered.nlargest(5, 'amount').sort_values(by='amount', ascending=True)
+                if not top_expenses.empty:
+                    fig_top = px.bar(
+                        top_expenses, 
+                        x='amount', 
+                        y='notes', 
+                        orientation='h', # 横向柱状图
+                        text='amount',
+                        title="Top 5 Largest Transactions",
+                        color='amount',
+                        color_continuous_scale='Reds'
+                    )
+                    fig_top.update_traces(texttemplate='$%{text:.2f}', textposition='outside')
+                    st.plotly_chart(fig_top, use_container_width=True)
+                else:
+                    st.info("Not enough data for ranking.")
+
+            with col_c2:
+                st.subheader("📅 Spending Timeline")
+                # 方案一：散点图 (气泡图)
+                # X轴是日期，Y轴是金额，点的大小也是金额
+                fig_scatter = px.scatter(
+                    df_filtered, 
+                    x='date', 
+                    y='amount', 
+                    size='amount',  # 钱越多，泡泡越大
+                    color='amount',
+                    hover_data=['notes'], # 鼠标放上去显示备注
+                    title="Transaction Timeline (Spot the Outliers)",
+                    size_max=30
+                )
+                st.plotly_chart(fig_scatter, use_container_width=True)
+            
+        # 场景 B: 看了所有分类 (Overview)
         else:
             col_c1, col_c2 = st.columns(2)
             with col_c1:
