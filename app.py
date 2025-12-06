@@ -119,18 +119,62 @@ elif page == "📊 看账本 (Dashboard)":
     else:
         df_filtered = df # 空表
 
-    # --- 顶部指标 ---
+    # --- 顶部指标 (Smart Metrics) ---
     st.header("Dashboard")
+    
+    # 1. 计算总支出
     total_spent = df_filtered['amount'].sum()
-    count = len(df_filtered)
     
-    col1, col2 = st.columns(2)
-    # 根据是否选择了分类，动态修改标题
-    metric_label = "Total Spent" if selected_category == "All" else f"Total Spent on {selected_category}"
-    
-    col1.metric(metric_label, f"${total_spent:,.2f}")
-    col2.metric("Transactions", count)
+    # 2. 计算日均和预测 (仅当选择的是"当前月份"或"特定月份"时才有效)
+    # 简单的逻辑：如果是过去月份，直接除以当月天数；如果是本月，除以已过天数
+    if selected_year != "All" and selected_month != "All":
+        import calendar
+        
+        # 获取该月有多少天
+        month_idx = months.index(selected_month)
+        _, num_days_in_month = calendar.monthrange(selected_year, month_idx)
+        
+        # 判断是否是“正在进行”的月份
+        is_current_month = (selected_year == today.year) and (month_idx == today.month)
+        
+        if is_current_month:
+            # 如果是本月，分母是“今天”
+            days_passed = today.day
+            daily_avg = total_spent / days_passed if days_passed > 0 else 0
+            projected_total = daily_avg * num_days_in_month
+            
+            metric_label = "📅 Daily Avg & Forecast"
+            metric_value = f"${daily_avg:.0f} / day"
+            metric_delta = f"Est. ${projected_total:,.0f}" # 预测月底总额
+            delta_color = "off" # 灰色显示，只做参考
+        else:
+            # 如果是历史月份，就是简单的日均
+            daily_avg = total_spent / num_days_in_month
+            metric_label = "📅 Daily Average"
+            metric_value = f"${daily_avg:.0f} / day"
+            metric_delta = None
+            delta_color = "off"
+    else:
+        # 如果选了 All，就显示最高单笔支出
+        max_expense = df_filtered.loc[df_filtered['amount'].idxmax()] if not df_filtered.empty else None
+        metric_label = "💥 Top Expense"
+        if max_expense is not None:
+            metric_value = f"${max_expense['amount']:,.0f}"
+            metric_delta = f"{max_expense['category']}: {max_expense['notes']}"
+        else:
+            metric_value = "$0"
+            metric_delta = None
+        delta_color = "normal"
 
+    # 3. 渲染指标卡
+    col1, col2 = st.columns(2)
+    
+    # 左边：总支出
+    title_label = "Total Spent" if selected_category == "All" else f"Spent on {selected_category}"
+    col1.metric(title_label, f"${total_spent:,.2f}")
+    
+    # 右边：智能指标 (日均预测 或 最大支出)
+    col2.metric(metric_label, metric_value, delta=metric_delta, delta_color=delta_color)
     # --- 可视化图表 (Visualizations) ---
     st.header("Visualizations")
     if not df_filtered.empty:
