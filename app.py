@@ -21,6 +21,18 @@ CATEGORIES = [
     "其他 (Other)", 
     "医疗（Medical）"
 ]
+# 定义固定支出模板 (全局配置)
+# 格式: (Category, Amount, Note) -> 不包含日期，因为日期是动态的
+FIXED_TEMPLATES = [
+    ("房租 (Rent)", 600.0, "Fixed Rent"),
+    ("其他 (Other)", 25.0, "US Mobile"),
+    ("娱乐 (Entertainment)", 34.93, "Subscription"),
+    ("医疗 (Medical)", 5.0, "降压药")
+]
+# 自动提取“固定支出类别”列表 (给智能算法用)
+# 这是一个 Python 推导式：自动把上面列表里的第0个元素(类别)拿出来，组成一个新列表
+# 结果会自动变成: ["房租 (Rent)", "其他 (Other)", ...]
+FIXED_CATEGORIES_For_Calc = [item[0] for item in FIXED_TEMPLATES]
 
 # Title
 st.title("💰 Personal Finance Manager")
@@ -85,14 +97,15 @@ elif page == "📊 看账本 (Dashboard)":
         except:
             target_date = today.strftime("%Y-%m-%d") # 防止日期错误兜底
 
-        fixed_expenses = [
-            (target_date, "房租 (Rent)", 600.0, "Fixed Rent", "Expense"),
-            (target_date, "其他 (Other)", 25.0, "US Mobile", "Expense"),
-            (target_date, "娱乐 (Entertainment)", 34.93, "Subscription", "Expense"),
-            (target_date, "医疗 (Medical)", 5.0, "降压药", "Expense"),
-        ]
-        db.add_transactions_bulk(fixed_expenses)
-        st.sidebar.success("Fixed expenses loaded!")
+        transactions_to_add = []
+        for template in FIXED_TEMPLATES:
+            # 拼装数据: (Date, Category, Amount, Note, Type)
+            # template[0]是分类, template[1]是金额, template[2]是备注
+            row = (target_date, template[0], template[1], template[2], "Expense")
+            transactions_to_add.append(row)
+            
+        db.add_transactions_bulk(transactions_to_add)
+        st.sidebar.success(f"已加载 {len(transactions_to_add)} 笔固定支出！")
         st.rerun()
 
     # --- 数据读取与多重过滤逻辑 ---
@@ -119,62 +132,87 @@ elif page == "📊 看账本 (Dashboard)":
     else:
         df_filtered = df # 空表
 
-    # --- 顶部指标 (Smart Metrics) ---
+# --- 顶部指标 (v3.4 智能预测版) ---
     st.header("Dashboard")
+
+    # 1. 基础数据计算
+    total_spent_month = df_filtered['amount'].sum() # 本月账面总支出
     
-    # 1. 计算总支出
-    total_spent = df_filtered['amount'].sum()
-    
-    # 2. 计算日均和预测 (仅当选择的是"当前月份"或"特定月份"时才有效)
-    # 简单的逻辑：如果是过去月份，直接除以当月天数；如果是本月，除以已过天数
+    # 2. 智能预测算法
     if selected_year != "All" and selected_month != "All":
         import calendar
-        
-        # 获取该月有多少天
         month_idx = months.index(selected_month)
         _, num_days_in_month = calendar.monthrange(selected_year, month_idx)
         
-        # 判断是否是“正在进行”的月份
+        # 判断是否是“当前正在进行”的月份
         is_current_month = (selected_year == today.year) and (month_idx == today.month)
         
         if is_current_month:
-            # 如果是本月，分母是“今天”
-            days_passed = today.day
-            daily_avg = total_spent / days_passed if days_passed > 0 else 0
-            projected_total = daily_avg * num_days_in_month
+            # --- 核心算法优化 ---
             
-            metric_label = "📅 Daily Avg & Forecast"
-            metric_value = f"${daily_avg:.0f} / day"
-            metric_delta = f"Est. ${projected_total:,.0f}" # 预测月底总额
-            delta_color = "off" # 灰色显示，只做参考
+            # A. 截止目前的总支出 (Exclude Future Dates)
+            # 只有发生在“今天及之前”的消费，才算入“当前消费速度”
+            # 注意：把 datetime 转换成 date 进行比较
+            df_current_progress = df_filtered[df_filtered['date'].dt.date <= today.date()]
+            
+            # B. 剥离固定支出 (Separate Fixed vs Variable)
+            # 房租是一次性的，不能除以天数，否则第一天日均会变成 $2000
+            df_fixed = df_current_progress[df_current_progress['category'].isin(FIXED_CATEGORIES_For_Calc)]
+            df_variable = df_current_progress[~df_current_progress['category'].isin(FIXED_CATEGORIES_For_Calc)]
+            
+            amount_fixed = df_fixed['amount'].sum()      # 房租等固定值
+            amount_variable = df_variable['amount'].sum() # 吃饭等日常值
+            
+            # C. 计算“真实”日均 (只算日常花销)
+            days_passed = today.day
+            daily_living_avg = amount_variable / days_passed if days_passed > 0 else 0
+            
+            # D. 预测月底总额
+            # 预测值 = (已知固定支出) + (日常日均 * 全月天数) + (已知的未来支出 - 还没发生的固定支出?)
+            # 简化模型：假设房租已经付了，只预测日常花销会持续增长
+            projected_variable = daily_living_avg * num_days_in_month
+            projected_total = amount_fixed + projected_variable
+            
+            # E. 如果未来（月底）已经记了帐（比如机票），也要加进来
+            df_future = df_filtered[df_filtered['date'].dt.date > today.date()]
+            future_spent = df_future['amount'].sum()
+            projected_total += future_spent
+
+            metric_label = "📅 Daily Living Avg (日常日均)"
+            metric_value = f"${daily_living_avg:.0f} / day"
+            metric_delta = f"Est. Total: ${projected_total:,.0f}" 
+            delta_color = "off"
+            
+            # 额外展示：截止今日的真实支出 (Spent to Date)
+            spent_to_date = df_current_progress['amount'].sum()
+            
         else:
-            # 如果是历史月份，就是简单的日均
-            daily_avg = total_spent / num_days_in_month
+            # 历史月份：直接算简单平均
+            daily_avg = total_spent_month / num_days_in_month
             metric_label = "📅 Daily Average"
             metric_value = f"${daily_avg:.0f} / day"
             metric_delta = None
             delta_color = "off"
+            spent_to_date = total_spent_month
     else:
-        # 如果选了 All，就显示最高单笔支出
-        max_expense = df_filtered.loc[df_filtered['amount'].idxmax()] if not df_filtered.empty else None
-        metric_label = "💥 Top Expense"
-        if max_expense is not None:
-            metric_value = f"${max_expense['amount']:,.0f}"
-            metric_delta = f"{max_expense['category']}: {max_expense['notes']}"
-        else:
-            metric_value = "$0"
-            metric_delta = None
-        delta_color = "normal"
+        # All Time 视图
+        metric_label = "📅 Transaction Count"
+        metric_value = len(df_filtered)
+        metric_delta = None
+        delta_color = "off"
+        spent_to_date = total_spent_month
 
-    # 3. 渲染指标卡
-    col1, col2 = st.columns(2)
+    # 3. 渲染指标卡 (显示 3 个指标)
+    col1, col2, col3 = st.columns(3)
     
-    # 左边：总支出
-    title_label = "Total Spent" if selected_category == "All" else f"Spent on {selected_category}"
-    col1.metric(title_label, f"${total_spent:,.2f}")
+    # 指标 1: 本月总账面 (包含未来的机票)
+    col1.metric("Total Booked", f"${total_spent_month:,.2f}")
     
-    # 右边：智能指标 (日均预测 或 最大支出)
-    col2.metric(metric_label, metric_value, delta=metric_delta, delta_color=delta_color)
+    # 指标 2: 截止今日实付 (不含未来)
+    col2.metric("Spent to Date", f"${spent_to_date:,.2f}")
+    
+    # 指标 3: 智能预测 (剥离房租后的生活费预测)
+    col3.metric(metric_label, metric_value, delta=metric_delta, delta_color=delta_color)
     # --- 可视化图表 (Visualizations) ---
     st.header("Visualizations")
     if not df_filtered.empty:
