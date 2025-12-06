@@ -86,63 +86,111 @@ if page == "➕ 记一笔 (Quick Log)":
             st.success(f"✅ Saved: {category} - ${amount:.2f}")
 
 # Page 2: Dashboard
-if page == "📊 看账本 (Dashboard)":
-    # Helper to filter data
-    def filter_data(df, year, month):
-        df['date'] = pd.to_datetime(df['date'])
-        df = df[df['date'].dt.year == year]
-        if month != "All":
-            month_index = months.index(month)
-            df = df[df['date'].dt.month == month_index]
-        return df
+# ==========================================
+# 4. 页面: 看账本 (Dashboard)
+# ==========================================
+elif page == "📊 看账本 (Dashboard)":
+    
+    # --- 过滤器 (Sidebar Filters) ---
+    st.sidebar.header("Filters")
+    today = datetime.today()
+    current_year = today.year
+    
+    # 1. 年份筛选 (增加 All)
+    year_options = ["All"] + list(range(current_year - 5, current_year + 6))
+    selected_year = st.sidebar.selectbox("Year", year_options, index=6)
 
-    # Load Data
+    # 2. 月份筛选
+    months = ["All", "January", "February", "March", "April", "May", "June", 
+              "July", "August", "September", "October", "November", "December"]
+    selected_month = st.sidebar.selectbox("Month", months, index=today.month)
+    
+    # 3. ✨ 新增：分类筛选 (Category Filter) ✨
+    # 在选项列表前面加一个 "All"，方便看总账
+    category_options = ["All"] + CATEGORIES
+    selected_category = st.sidebar.selectbox("Category (Filter)", category_options, index=0)
+
+    # --- 固定支出按钮 (保持不变) ---
+    st.sidebar.markdown("---")
+    st.sidebar.header("Monthly Setup")
+    if st.sidebar.button("Load Fixed Expenses"):
+        # 默认填入当年当月，如果是 All 则填入今天
+        target_year = current_year if selected_year == "All" else selected_year
+        target_month_idx = today.month if selected_month == "All" else months.index(selected_month)
+        
+        try:
+            target_date = datetime(target_year, target_month_idx, 1).strftime("%Y-%m-%d")
+        except:
+            target_date = today.strftime("%Y-%m-%d") # 防止日期错误兜底
+
+        fixed_expenses = [
+            (target_date, "房租 (Rent)", 600.0, "Fixed Rent", "Expense"),
+            (target_date, "其他 (Other)", 25.0, "US Mobile", "Expense"),
+            (target_date, "娱乐 (Entertainment)", 34.93, "Subscription", "Expense")
+        ]
+        db.add_transactions_bulk(fixed_expenses)
+        st.sidebar.success("Fixed expenses loaded!")
+        st.rerun()
+
+    # --- 数据读取与多重过滤逻辑 ---
     df = db.get_transactions()
-    df_filtered = filter_data(df.copy(), selected_year, selected_month)
+    
+    if not df.empty:
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # 1. 年份过滤
+        if selected_year != "All":
+            df_filtered = df[df['date'].dt.year == selected_year]
+        else:
+            df_filtered = df.copy()
+            
+        # 2. 月份过滤
+        if selected_month != "All":
+            month_idx = months.index(selected_month)
+            df_filtered = df_filtered[df_filtered['date'].dt.month == month_idx]
+            
+        # 3. ✨ 分类过滤 ✨
+        if selected_category != "All":
+            df_filtered = df_filtered[df_filtered['category'] == selected_category]
+            
+    else:
+        df_filtered = df # 空表
 
-    # Dashboard Metrics
+    # --- 顶部指标 ---
     st.header("Dashboard")
-    total_spent = df_filtered[df_filtered['type'] == 'Expense']['amount'].sum()
-    budget_status = monthly_budget - total_spent
-
+    total_spent = df_filtered['amount'].sum()
+    count = len(df_filtered)
+    
     col1, col2 = st.columns(2)
-    col1.metric("Total Spent (This Month)", f"${total_spent:,.2f}")
-    col2.metric("Budget Status", f"${budget_status:,.2f}", delta_color="normal")
+    # 根据是否选择了分类，动态修改标题
+    metric_label = "Total Spent" if selected_category == "All" else f"Total Spent on {selected_category}"
+    
+    col1.metric(metric_label, f"${total_spent:,.2f}")
+    col2.metric("Transactions", count)
 
-    # Visualizations
+    # --- 可视化图表 (智能切换) ---
     st.header("Visualizations")
     if not df_filtered.empty:
-        col_chart1, col_chart2 = st.columns(2)
-        
-        with col_chart1:
-            # Pie Chart: Expenses by Category
-            fig_pie = px.pie(df_filtered[df_filtered['type'] == 'Expense'], values='amount', names='category', title='Expenses by Category')
-            st.plotly_chart(fig_pie, use_container_width=True)
+        # 场景 A: 看了具体分类 (例如：只看餐饮) -> 显示每日趋势
+        if selected_category != "All":
+            st.info(f"👀 Viewing details for: **{selected_category}**")
+            # 每日趋势图
+            daily_trend = df_filtered.groupby('date')['amount'].sum().reset_index()
+            fig_trend = px.bar(daily_trend, x='date', y='amount', title=f'Daily Spending Trend ({selected_category})')
+            st.plotly_chart(fig_trend, use_container_width=True)
             
-        with col_chart2:
-            # Bar Chart: Total Amount by Category
-            category_spending = df_filtered[df_filtered['type'] == 'Expense'].groupby('category')['amount'].sum().reset_index()
-            fig_bar = px.bar(category_spending, x='category', y='amount', color='category', title='Total Amount by Category')
-            st.plotly_chart(fig_bar, use_container_width=True)
-
-    # Category Breakdown
-    st.header("Monthly Summary")
-    if not df_filtered.empty:
-        breakdown = df_filtered[df_filtered['type'] == 'Expense'].groupby('category')['amount'].sum().reset_index()
-        breakdown = breakdown.sort_values(by='amount', ascending=False)
-        breakdown.columns = ["Category", "Total Amount"]
-        st.dataframe(
-            breakdown,
-            column_config={
-                "Category": st.column_config.TextColumn("Category"),
-                "Total Amount": st.column_config.NumberColumn("Total Amount", format="$%.2f"),
-            },
-            use_container_width=True,
-            hide_index=True
-        )
+        # 场景 B: 看了所有分类 -> 显示饼图和对比柱状图
+        else:
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                fig_pie = px.pie(df_filtered, values='amount', names='category', title='Expenses by Category')
+                st.plotly_chart(fig_pie, use_container_width=True)
+            with col_c2:
+                cat_sum = df_filtered.groupby('category')['amount'].sum().reset_index()
+                fig_bar = px.bar(cat_sum, x='category', y='amount', color='category', title='Total Amount by Category')
+                st.plotly_chart(fig_bar, use_container_width=True)
     else:
-        st.info("No expenses yet.")
-
+        st.info("No expenses found for this period.")
 
     # Data Grid (Manually Fixed Version)
     # Data Grid (Verified Fix)
