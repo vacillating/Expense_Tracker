@@ -148,43 +148,63 @@ elif page == "📊 看账本 (Dashboard)":
         is_current_month = (selected_year == today.year) and (month_idx == today.month)
         
         if is_current_month:
-            # --- 核心算法优化 ---
+            # --- 核心算法优化 (v3.6 精准剥离版) ---
             
-            # A. 截止目前的总支出 (Exclude Future Dates)
-            # 只有发生在“今天及之前”的消费，才算入“当前消费速度”
-            # 注意：把 datetime 转换成 date 进行比较
-            df_current_progress = df_filtered[df_filtered['date'].dt.date <= today.date()]
+            # A. 截止目前的总支出
+            df_current_progress = df_filtered[df_filtered['date'].dt.date <= today.date()].copy()
             
-            # B. 剥离固定支出 (Separate Fixed vs Variable)
-            # 房租是一次性的，不能除以天数，否则第一天日均会变成 $2000
-            df_fixed = df_current_progress[df_current_progress['category'].isin(FIXED_CATEGORIES_For_Calc)]
-            df_variable = df_current_progress[~df_current_progress['category'].isin(FIXED_CATEGORIES_For_Calc)]
+            # B. 精准剥离固定支出 (Targeted Stripping)
+            # 逻辑：不再按“分类”一刀切，而是按 (分类 + 金额) 精准抓取
             
-            amount_fixed = df_fixed['amount'].sum()      # 房租等固定值
-            amount_variable = df_variable['amount'].sum() # 吃饭等日常值
+            # 1. 初始化一个“全部为假”的标记列表
+            is_fixed_transaction = pd.Series(False, index=df_current_progress.index)
+            
+            # 2. 遍历你的模板，把符合特征的行标记出来
+            for template in FIXED_TEMPLATES:
+                # template 格式: (Category, Amount, Note)
+                fix_cat = template[0]
+                fix_amt = template[1]
+                
+                # 查找同时满足“分类”和“金额”的记录
+                # (注意：浮点数比较通常用近似值，但这里我们假设金额是精确录入的)
+                match_condition = (
+                    (df_current_progress['category'] == fix_cat) & 
+                    (abs(df_current_progress['amount'] - fix_amt) < 0.01) # 允许0.01的误差
+                )
+                # 将匹配到的行标记为 True (固定支出)
+                is_fixed_transaction = is_fixed_transaction | match_condition
+
+            # 3. 拆分数据
+            df_fixed = df_current_progress[is_fixed_transaction]
+            df_variable = df_current_progress[~is_fixed_transaction] # 取反，剩下的就是日常
+            
+            amount_fixed = df_fixed['amount'].sum()
+            amount_variable = df_variable['amount'].sum()
             
             # C. 计算“真实”日均 (只算日常花销)
             days_passed = today.day
             daily_living_avg = amount_variable / days_passed if days_passed > 0 else 0
             
             # D. 预测月底总额
-            # 预测值 = (已知固定支出) + (日常日均 * 全月天数) + (已知的未来支出 - 还没发生的固定支出?)
-            # 简化模型：假设房租已经付了，只预测日常花销会持续增长
+            # 预测值 = 已知固定支出 + (日常日均 * 全月天数)
             projected_variable = daily_living_avg * num_days_in_month
             projected_total = amount_fixed + projected_variable
             
-            # E. 如果未来（月底）已经记了帐（比如机票），也要加进来
+            # E. 加上未来的支出
             df_future = df_filtered[df_filtered['date'].dt.date > today.date()]
-            future_spent = df_future['amount'].sum()
-            projected_total += future_spent
+            projected_total += df_future['amount'].sum()
 
             metric_label = "📅 Daily Living Avg (日常日均)"
             metric_value = f"${daily_living_avg:.0f} / day"
             metric_delta = f"Est. Total: ${projected_total:,.0f}" 
             delta_color = "off"
             
-            # 额外展示：截止今日的真实支出 (Spent to Date)
             spent_to_date = df_current_progress['amount'].sum()
+            
+            # --- 🔍 调试窗口 (验证是否只抓到了那几项) ---
+            with st.expander("🕵️‍♂️ 算法验证 (Check Logic)"):
+                st.write("🔴 被识别为固定支出 (Fixed):", df_fixed[['date', 'category', 'amount', 'notes']])
+                st.write("🟢 纳入日均计算的日常支出 (Variable):", df_variable[['date', 'category', 'amount', 'notes']])
             
         else:
             # 历史月份：直接算简单平均
