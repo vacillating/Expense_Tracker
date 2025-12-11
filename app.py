@@ -173,6 +173,8 @@ elif page == "📊 看账本 (Dashboard)":
                 )
                 # 将匹配到的行标记为 True (固定支出)
                 is_fixed_transaction = is_fixed_transaction | match_condition
+            is_medical_transaction = (df_current_progress['category'] == "医疗 (Medical)")
+            is_fixed_transaction = is_fixed_transaction | is_medical_transaction
 
             # 3. 拆分数据
             df_fixed = df_current_progress[is_fixed_transaction]
