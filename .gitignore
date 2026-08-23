@@ -182,3 +182,8 @@ cython_debug/
 streamlit-finance-480218-1cb9f2e57c80.json
 /.streamlit
 Notes.txt
+
+# Project-specific (CLAUDE.md hard rules)
+*.db
+.DS_Store
+.streamlit/secrets.toml

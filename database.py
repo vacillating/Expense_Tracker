@@ -21,9 +21,12 @@ class DBManager:
         except Exception as e:
             st.error(f"无法连接 Google Sheets，请检查 Secrets 配置。错误: {e}")
 
-    def get_transactions(self):
+    @st.cache_data(ttl=15)
+    def get_transactions(_self):
         # 获取所有数据
-        data = self.sheet.get_all_records()
+        # 注意：参数名用 _self 而不是 self —— st.cache_data 会跳过对下划线开头
+        # 参数的哈希检查，否则 DBManager 里不可哈希的 gspread 连接对象会导致报错。
+        data = _self.sheet.get_all_records()
         df = pd.DataFrame(data)
         # 如果是空的，返回空 DataFrame 但保持列结构
         if df.empty:
@@ -37,6 +40,8 @@ class DBManager:
         unique_id = str(uuid.uuid4())
         # 添加一行 (注意顺序要和表头一致: id, date, type, category, amount, notes)
         self.sheet.append_row([unique_id, date, type, category, amount, notes])
+        # 写入成功后立刻让缓存失效，避免刚加的记录要等 TTL 过期才显示
+        self.get_transactions.clear()
 
     def add_transactions_bulk(self, transactions):
         # 批量添加
@@ -48,8 +53,9 @@ class DBManager:
             # t 的顺序是 date, category, amount, notes, type
             # 目标顺序: id, date, type, category, amount, notes
             rows_to_add.append([unique_id, t[0], t[4], t[1], t[2], t[3]])
-        
+
         self.sheet.append_rows(rows_to_add)
+        self.get_transactions.clear()
 
     def delete_transaction(self, transaction_id):
         # Google Sheets 删除比较麻烦，需要先找到行号
@@ -58,5 +64,7 @@ class DBManager:
             cell = self.sheet.find(transaction_id)
             # 删除那一行
             self.sheet.delete_rows(cell.row)
+            # 只有删除成功才清缓存；异常分支里数据没变，不需要清
+            self.get_transactions.clear()
         except Exception as e:
             st.error(f"删除失败 (ID未找到): {e}")

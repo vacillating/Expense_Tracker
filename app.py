@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import hmac
 from datetime import datetime
 import plotly.express as px
 from database import DBManager
@@ -7,6 +8,29 @@ from io import BytesIO
 
 # Page Config
 st.set_page_config(page_title="Personal Finance Manager", layout="wide")
+
+
+def check_password():
+    """密码门：验证通过前，后面的代码（包括连 Google Sheets）都不会执行。"""
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.title("🔒 Personal Finance Manager")
+    pwd = st.text_input("密码 (Password)", type="password")
+    if st.button("登录 (Log in)"):
+        if "app_password" not in st.secrets:
+            st.error("未配置密码 (app_password missing in secrets)，请检查 secrets 配置。")
+            return False
+        if hmac.compare_digest(pwd, st.secrets["app_password"]):
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("密码错误 (Incorrect password)")
+    return False
+
+
+if not check_password():
+    st.stop()
 
 # Initialize DB
 db = DBManager()
@@ -173,8 +197,11 @@ elif page == "📊 看账本 (Dashboard)":
                 )
                 # 将匹配到的行标记为 True (固定支出)
                 is_fixed_transaction = is_fixed_transaction | match_condition
-            is_medical_transaction = (df_current_progress['category'] == "医疗 (Medical)")
-            is_fixed_transaction = is_fixed_transaction | is_medical_transaction
+            # 注意：之前这里还有一段"只要分类是医疗就整体算固定支出"的逻辑，
+            # 会覆盖掉上面按 (分类+金额) 精确匹配的效果，导致偶发的大额医疗支出
+            # 被错误地排除在日常日均之外。医疗类目里金额精确等于 5.0 的那笔
+            # （FIXED_TEMPLATES 里的"降压药"）已经能被上面的循环正确识别为固定支出，
+            # 不需要额外的分类级别兜底。
 
             # 3. 拆分数据
             df_fixed = df_current_progress[is_fixed_transaction]
