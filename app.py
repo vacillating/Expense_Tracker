@@ -48,7 +48,7 @@ CATEGORIES = [
 # 定义固定支出模板 (全局配置)
 # 格式: (Category, Amount, Note) -> 不包含日期，因为日期是动态的
 FIXED_TEMPLATES = [
-    ("房租 (Rent)", 600.0, "Fixed Rent"),
+    ("房租 (Rent)", 1050.0, "Fixed Rent"),
     ("其他 (Other)", 25.0, "US Mobile"),
     ("娱乐 (Entertainment)", 34.93, "Subscription"),
     ("医疗 (Medical)", 5.0, "降压药")
