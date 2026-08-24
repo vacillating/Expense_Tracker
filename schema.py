@@ -23,8 +23,17 @@ HEADERS = [
     "external_id",     # stable fingerprint of the source row; makes re-import idempotent
     "is_recurring",    # TRUE/FALSE — replaces the hand-maintained FIXED_TEMPLATES matching
     "created_at",      # when the row was written (NOT when the money was spent)
+    "granularity",     # transaction | monthly_summary — see note below
 ]
 
+# granularity = "monthly_summary" is for when we know the total but not the breakdown
+# (a card statement that can't be itemized, a channel that wasn't exported that month,
+# a period nobody got around to logging in detail). It's not just for this one CMB
+# backfill — any future "known total, no receipts" situation should use the same
+# mechanism instead of being a one-off special case. Analysis that needs itemized
+# data (daily average, projection, category charts, top-N rankings) must filter these
+# out; anything that only needs a period total (Total Booked, Spent to Date, future
+# month-over-month trend) should keep them.
 DEFAULTS = {
     "type": "Expense",
     "currency": "USD",
@@ -35,6 +44,7 @@ DEFAULTS = {
     "external_id": "",
     "is_recurring": False,
     "created_at": "",
+    "granularity": "transaction",
 }
 
 # Values Google Sheets can hand back for a boolean, depending on whether the cell
