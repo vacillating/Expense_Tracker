@@ -187,3 +187,5 @@ Notes.txt
 *.db
 .DS_Store
 .streamlit/secrets.toml
+data/
+*.csv
