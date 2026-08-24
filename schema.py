@@ -6,6 +6,8 @@ later means editing HEADERS + DEFAULTS and nothing else.
 """
 from __future__ import annotations
 
+import pandas as pd
+
 HEADERS = [
     "id",              # UUID, generated on insert
     "date",            # YYYY-MM-DD, when the money was spent
@@ -42,6 +44,18 @@ _TRUE = {True, 1, "TRUE", "True", "true", "1", "是"}
 
 def to_bool(v) -> bool:
     return v in _TRUE
+
+
+def normalize_date(v) -> pd.Timestamp:
+    """Parse a `date` cell into a comparable, time-stripped Timestamp.
+
+    The `date` column's Sheets number format can silently drop the leading
+    zero (`"2026-5-2"` vs `"2026-05-2"` — see CLAUDE.md), so two rows for the
+    same day can carry different-looking strings. Any date comparison —
+    especially the Phase 3 CSV-import dedup matching by amount + date — must
+    go through this instead of comparing the raw strings.
+    """
+    return pd.Timestamp(pd.to_datetime(v)).normalize()
 
 
 def to_float(v, default: float = 0.0) -> float:

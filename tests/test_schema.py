@@ -5,7 +5,7 @@ schema.parse_row() 是唯一负责把 Google Sheets 返回的原始行（字符�
 """
 import pytest
 
-from schema import HEADERS, parse_row, row_from_dict, to_bool, to_float
+from schema import HEADERS, normalize_date, parse_row, row_from_dict, to_bool, to_float
 
 
 def test_parse_row_old_six_column_row_fills_defaults():
@@ -85,3 +85,16 @@ def test_row_from_dict_orders_by_headers_and_stringifies_bool():
     assert row[HEADERS.index("amount")] == 5
     assert row[HEADERS.index("is_recurring")] == "TRUE"
     assert row[HEADERS.index("source")] == "manual"  # 未传时走 DEFAULTS
+
+
+def test_normalize_date_treats_zero_padded_and_unpadded_as_same_day():
+    """Sheets 的 date 列会悄悄丢掉补零（'2026-05-02' 读回来可能变成
+    '2026-5-2'，见 CLAUDE.md），任何日期比较——尤其是 Phase 3 CSV 导入的
+    去重逻辑——都必须走 normalize_date()，不能直接比字符串。这条测试红了，
+    说明去重逻辑又在裸比字符串了。"""
+    assert normalize_date("2026-05-02") == normalize_date("2026-5-2")
+
+
+def test_normalize_date_still_distinguishes_different_days():
+    """防止上面那条测试因为 normalize_date 恒等返回同一个值而"假通过"。"""
+    assert normalize_date("2026-05-02") != normalize_date("2026-05-03")
