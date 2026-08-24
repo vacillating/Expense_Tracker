@@ -166,6 +166,12 @@ elif page == "📊 看账本 (Dashboard)":
     else:
         df_filtered = df # 空表
 
+    # granularity == "monthly_summary" 的行（比如招行没法逐笔导出、手动补录的月度净额）
+    # 只知道总数、不知道明细，不能参与任何"看单笔交易"的分析——日均/projection/图表/
+    # 排行榜都得用这份排除掉之后的数据。Total Booked / Spent to Date 这类月度总额
+    # 指标要保留 monthly_summary，所以那两个继续用没过滤的 df_filtered，不要改。
+    df_filtered_txn = df_filtered[df_filtered['granularity'] != 'monthly_summary']
+
 # --- 顶部指标 (v3.4 智能预测版) ---
     st.header("Dashboard")
 
@@ -186,24 +192,27 @@ elif page == "📊 看账本 (Dashboard)":
             
             # A. 截止目前的总支出
             df_current_progress = df_filtered[df_filtered['date'].dt.date <= today.date()].copy()
-            
+            # 剥离固定支出、算日均，都只看逐笔交易——monthly_summary（比如招行汇总）
+            # 不是真实的单笔消费，掺进去会把 is_fixed 匹配和日均算法搞乱。
+            df_current_progress_txn = df_current_progress[df_current_progress['granularity'] != 'monthly_summary']
+
             # B. 精准剥离固定支出 (Targeted Stripping)
             # 逻辑：不再按“分类”一刀切，而是按 (分类 + 金额) 精准抓取
             
             # 1. 初始化一个“全部为假”的标记列表
-            is_fixed_transaction = pd.Series(False, index=df_current_progress.index)
-            
+            is_fixed_transaction = pd.Series(False, index=df_current_progress_txn.index)
+
             # 2. 遍历你的模板，把符合特征的行标记出来
             for template in FIXED_TEMPLATES:
                 # template 格式: (Category, Amount, Note)
                 fix_cat = template[0]
                 fix_amt = template[1]
-                
+
                 # 查找同时满足“分类”和“金额”的记录
                 # (注意：浮点数比较通常用近似值，但这里我们假设金额是精确录入的)
                 match_condition = (
-                    (df_current_progress['category'] == fix_cat) & 
-                    (abs(df_current_progress['amount'] - fix_amt) < 0.01) # 允许0.01的误差
+                    (df_current_progress_txn['category'] == fix_cat) &
+                    (abs(df_current_progress_txn['amount'] - fix_amt) < 0.01) # 允许0.01的误差
                 )
                 # 将匹配到的行标记为 True (固定支出)
                 is_fixed_transaction = is_fixed_transaction | match_condition
@@ -214,23 +223,23 @@ elif page == "📊 看账本 (Dashboard)":
             # 不需要额外的分类级别兜底。
 
             # 3. 拆分数据
-            df_fixed = df_current_progress[is_fixed_transaction]
-            df_variable = df_current_progress[~is_fixed_transaction] # 取反，剩下的就是日常
-            
+            df_fixed = df_current_progress_txn[is_fixed_transaction]
+            df_variable = df_current_progress_txn[~is_fixed_transaction] # 取反，剩下的就是日常
+
             amount_fixed = df_fixed['amount'].sum()
             amount_variable = df_variable['amount'].sum()
-            
+
             # C. 计算“真实”日均 (只算日常花销)
             days_passed = today.day
             daily_living_avg = amount_variable / days_passed if days_passed > 0 else 0
-            
+
             # D. 预测月底总额
             # 预测值 = 已知固定支出 + (日常日均 * 全月天数)
             projected_variable = daily_living_avg * num_days_in_month
             projected_total = amount_fixed + projected_variable
-            
-            # E. 加上未来的支出
-            df_future = df_filtered[df_filtered['date'].dt.date > today.date()]
+
+            # E. 加上未来的支出（同样排除 monthly_summary，理由跟上面一致）
+            df_future = df_filtered_txn[df_filtered_txn['date'].dt.date > today.date()]
             projected_total += df_future['amount'].sum()
 
             metric_label = "📅 Daily Living Avg (日常日均)"
@@ -288,7 +297,9 @@ elif page == "📊 看账本 (Dashboard)":
             with col_c1:
                 st.subheader(f"🔍 Top Spending in {selected_category}")
                 # 方案二：该分类下最贵的 5 笔消费 (排行榜)
-                top_expenses = df_filtered.nlargest(5, 'amount').sort_values(by='amount', ascending=True)
+                # 排除 monthly_summary：一笔汇总动辄几千块，会直接霸占排行榜前几名，
+                # 而它根本不是"一笔消费"。
+                top_expenses = df_filtered_txn.nlargest(5, 'amount').sort_values(by='amount', ascending=True)
                 if not top_expenses.empty:
                     fig_top = px.bar(
                         top_expenses, 
@@ -309,8 +320,9 @@ elif page == "📊 看账本 (Dashboard)":
                 st.subheader("📅 Spending Timeline")
                 # 方案一：散点图 (气泡图)
                 # X轴是日期，Y轴是金额，点的大小也是金额
+                # 同样排除 monthly_summary，不然那一个点会大到看不出真正的 outlier 在哪
                 fig_scatter = px.scatter(
-                    df_filtered, 
+                    df_filtered_txn,
                     x='date', 
                     y='amount', 
                     size='amount',  # 钱越多，泡泡越大
@@ -325,10 +337,12 @@ elif page == "📊 看账本 (Dashboard)":
         else:
             col_c1, col_c2 = st.columns(2)
             with col_c1:
-                fig_pie = px.pie(df_filtered, values='amount', names='category', title='Expenses by Category')
+                # 排除 monthly_summary：一笔汇总的分类是"其他/杂项"之类的占位，混进饼图会
+                # 严重扭曲各分类的真实占比。
+                fig_pie = px.pie(df_filtered_txn, values='amount', names='category', title='Expenses by Category')
                 st.plotly_chart(fig_pie, width="stretch")
             with col_c2:
-                cat_sum = df_filtered.groupby('category')['amount'].sum().reset_index()
+                cat_sum = df_filtered_txn.groupby('category')['amount'].sum().reset_index()
                 fig_bar = px.bar(cat_sum, x='category', y='amount', color='category', title='Total Amount by Category')
                 st.plotly_chart(fig_bar, width="stretch")
     else:
@@ -396,6 +410,8 @@ elif page == "📊 看账本 (Dashboard)":
                 "amount_usd": None,
                 "external_id": None,
                 "created_at": None,
+                # 手动记账永远是 transaction，这个字段用户不需要看到也不需要改
+                "granularity": None,
             },
             width="stretch",
             num_rows="dynamic",
