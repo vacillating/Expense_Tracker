@@ -52,7 +52,7 @@ class DBManager:
         # 表升级到 14 列之后自动就是原样。app.py 目前只读旧的 6 列，不受影响。
         return df.reindex(columns=HEADERS)
 
-    def add_transaction(self, date, category, amount, notes, type="Expense"):
+    def add_transaction(self, date, category, amount, notes, type="Expense", payment_method=""):
         # 生成一个唯一 ID (UUID)，方便以后删除
         unique_id = str(uuid.uuid4())
         row = row_from_dict({
@@ -63,6 +63,7 @@ class DBManager:
             "amount": amount,
             "amount_usd": amount,  # Quick Log 目前只收 USD，跟 amount 一致
             "notes": notes,
+            "payment_method": payment_method,
             "created_at": datetime.now().isoformat(timespec="seconds"),
         })
         self.sheet.append_row(row)

@@ -45,6 +45,14 @@ CATEGORIES = [
     "其他 (Other)", 
     "医疗 (Medical)"
 ]
+# 支付方式选项 (全局配置，跟 CATEGORIES 一样统一放这里，不要散在各处硬编码)
+PAYMENT_METHODS = [
+    "CMB credit",
+    "Chase debit",
+    "Cathay debit",
+    "WeChat",
+    "cash",
+]
 # 定义固定支出模板 (全局配置)
 # 格式: (Category, Amount, Note) -> 不包含日期，因为日期是动态的
 FIXED_TEMPLATES = [
@@ -76,11 +84,13 @@ if page == "➕ 记一笔 (Quick Log)":
         col3, col4 = st.columns(2)
         amount = col3.number_input("Amount", min_value=0.01, format="%.2f")
         notes = col4.text_input("Notes")
-        
-        submitted = st.form_submit_button("Save Expense", use_container_width=True)
-        
+
+        payment_method = st.selectbox("Payment Method", PAYMENT_METHODS)
+
+        submitted = st.form_submit_button("Save Expense", width="stretch")
+
         if submitted:
-            db.add_transaction(date.strftime("%Y-%m-%d"), category, amount, notes, type="Expense")
+            db.add_transaction(date.strftime("%Y-%m-%d"), category, amount, notes, type="Expense", payment_method=payment_method)
             st.success(f"✅ Saved: {category} - ${amount:.2f}")
 
 # Page 2: Dashboard
@@ -128,7 +138,7 @@ elif page == "📊 看账本 (Dashboard)":
             row = (target_date, template[0], template[1], template[2], "Expense")
             transactions_to_add.append(row)
             
-        db.add_transactions_bulk(transactions_to_add)
+        db.add_transactions_bulk(transactions_to_add, is_recurring=True)
         st.sidebar.success(f"已加载 {len(transactions_to_add)} 笔固定支出！")
         st.rerun()
 
@@ -291,7 +301,7 @@ elif page == "📊 看账本 (Dashboard)":
                         color_continuous_scale='Reds'
                     )
                     fig_top.update_traces(texttemplate='$%{text:.2f}', textposition='outside')
-                    st.plotly_chart(fig_top, use_container_width=True)
+                    st.plotly_chart(fig_top, width="stretch")
                 else:
                     st.info("Not enough data for ranking.")
 
@@ -309,18 +319,18 @@ elif page == "📊 看账本 (Dashboard)":
                     title="Transaction Timeline (Spot the Outliers)",
                     size_max=30
                 )
-                st.plotly_chart(fig_scatter, use_container_width=True)
+                st.plotly_chart(fig_scatter, width="stretch")
             
         # 场景 B: 看了所有分类 (Overview)
         else:
             col_c1, col_c2 = st.columns(2)
             with col_c1:
                 fig_pie = px.pie(df_filtered, values='amount', names='category', title='Expenses by Category')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                st.plotly_chart(fig_pie, width="stretch")
             with col_c2:
                 cat_sum = df_filtered.groupby('category')['amount'].sum().reset_index()
                 fig_bar = px.bar(cat_sum, x='category', y='amount', color='category', title='Total Amount by Category')
-                st.plotly_chart(fig_bar, use_container_width=True)
+                st.plotly_chart(fig_bar, width="stretch")
     else:
         st.info("No expenses found for this period.")
 
@@ -381,8 +391,13 @@ elif page == "📊 看账本 (Dashboard)":
                 "category": st.column_config.SelectboxColumn("Category", options=CATEGORIES, required=True),
                 "amount": st.column_config.NumberColumn("Amount", format="$%.2f", required=True),
                 "notes": st.column_config.TextColumn("Notes"),
+                "payment_method": st.column_config.SelectboxColumn("Payment Method", options=PAYMENT_METHODS),
+                # 暂时用不上，隐藏掉；source/merchant 先保留默认显示，看效果再决定要不要也隐藏
+                "amount_usd": None,
+                "external_id": None,
+                "created_at": None,
             },
-            use_container_width=True,
+            width="stretch",
             num_rows="dynamic",
             key="expense_editor",
             on_change=commit_changes
