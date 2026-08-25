@@ -41,9 +41,10 @@ CATEGORIES = [
     "餐饮 (Dine & Grocery)", 
     "交通 (Transport)", 
     "购物 (Shopping)", 
-    "娱乐 (Entertainment)", 
-    "其他 (Other)", 
-    "医疗 (Medical)"
+    "娱乐 (Entertainment)",
+    "其他 (Other)",
+    "医疗 (Medical)",
+    "旅行 (Travel)",  # 2026-08 新增：机票/酒店/度假租车单独一类，不跟日常通勤混在"交通"里
 ]
 # 支付方式选项 (全局配置，跟 CATEGORIES 一样统一放这里，不要散在各处硬编码)
 PAYMENT_METHODS = [
