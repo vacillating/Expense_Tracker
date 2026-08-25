@@ -176,7 +176,10 @@ elif page == "📊 看账本 (Dashboard)":
     st.header("Dashboard")
 
     # 1. 基础数据计算
-    total_spent_month = df_filtered['amount'].sum() # 本月账面总支出
+    # 注意：一律用 amount_usd，不用 amount —— amount 对 CNY 行是原始人民币数字，
+    # 直接加总会把人民币和美元当同一个单位相加（真实事故：8月账面一度算成 -$8548，
+    # 就是一笔 -¥13795 的代付报销被当成 -$13795 直接计进去了）。
+    total_spent_month = df_filtered['amount_usd'].sum() # 本月账面总支出
     
     # 2. 智能预测算法
     if selected_year != "All" and selected_month != "All":
@@ -212,7 +215,7 @@ elif page == "📊 看账本 (Dashboard)":
                 # (注意：浮点数比较通常用近似值，但这里我们假设金额是精确录入的)
                 match_condition = (
                     (df_current_progress_txn['category'] == fix_cat) &
-                    (abs(df_current_progress_txn['amount'] - fix_amt) < 0.01) # 允许0.01的误差
+                    (abs(df_current_progress_txn['amount_usd'] - fix_amt) < 0.01) # 允许0.01的误差
                 )
                 # 将匹配到的行标记为 True (固定支出)
                 is_fixed_transaction = is_fixed_transaction | match_condition
@@ -226,8 +229,8 @@ elif page == "📊 看账本 (Dashboard)":
             df_fixed = df_current_progress_txn[is_fixed_transaction]
             df_variable = df_current_progress_txn[~is_fixed_transaction] # 取反，剩下的就是日常
 
-            amount_fixed = df_fixed['amount'].sum()
-            amount_variable = df_variable['amount'].sum()
+            amount_fixed = df_fixed['amount_usd'].sum()
+            amount_variable = df_variable['amount_usd'].sum()
 
             # C. 计算“真实”日均 (只算日常花销)
             days_passed = today.day
@@ -240,19 +243,19 @@ elif page == "📊 看账本 (Dashboard)":
 
             # E. 加上未来的支出（同样排除 monthly_summary，理由跟上面一致）
             df_future = df_filtered_txn[df_filtered_txn['date'].dt.date > today.date()]
-            projected_total += df_future['amount'].sum()
+            projected_total += df_future['amount_usd'].sum()
 
             metric_label = "📅 Daily Living Avg (日常日均)"
             metric_value = f"${daily_living_avg:.0f} / day"
             metric_delta = f"Est. Total: ${projected_total:,.0f}" 
             delta_color = "off"
             
-            spent_to_date = df_current_progress['amount'].sum()
-            
+            spent_to_date = df_current_progress['amount_usd'].sum()
+
             # --- 🔍 调试窗口 (验证是否只抓到了那几项) ---
             with st.expander("🕵️‍♂️ 算法验证 (Check Logic)"):
-                st.write("🔴 被识别为固定支出 (Fixed):", df_fixed[['date', 'category', 'amount', 'notes']])
-                st.write("🟢 纳入日均计算的日常支出 (Variable):", df_variable[['date', 'category', 'amount', 'notes']])
+                st.write("🔴 被识别为固定支出 (Fixed):", df_fixed[['date', 'category', 'amount', 'currency', 'amount_usd', 'notes']])
+                st.write("🟢 纳入日均计算的日常支出 (Variable):", df_variable[['date', 'category', 'amount', 'currency', 'amount_usd', 'notes']])
             
         else:
             # 历史月份：直接算简单平均
@@ -298,17 +301,18 @@ elif page == "📊 看账本 (Dashboard)":
                 st.subheader(f"🔍 Top Spending in {selected_category}")
                 # 方案二：该分类下最贵的 5 笔消费 (排行榜)
                 # 排除 monthly_summary：一笔汇总动辄几千块，会直接霸占排行榜前几名，
-                # 而它根本不是"一笔消费"。
-                top_expenses = df_filtered_txn.nlargest(5, 'amount').sort_values(by='amount', ascending=True)
+                # 而它根本不是"一笔消费"。用 amount_usd 排名/显示，不是 amount——
+                # 理由同上，CNY 行的 amount 是原始人民币数字。
+                top_expenses = df_filtered_txn.nlargest(5, 'amount_usd').sort_values(by='amount_usd', ascending=True)
                 if not top_expenses.empty:
                     fig_top = px.bar(
-                        top_expenses, 
-                        x='amount', 
-                        y='notes', 
+                        top_expenses,
+                        x='amount_usd',
+                        y='notes',
                         orientation='h', # 横向柱状图
-                        text='amount',
+                        text='amount_usd',
                         title="Top 5 Largest Transactions",
-                        color='amount',
+                        color='amount_usd',
                         color_continuous_scale='Reds'
                     )
                     fig_top.update_traces(texttemplate='$%{text:.2f}', textposition='outside')
@@ -319,14 +323,16 @@ elif page == "📊 看账本 (Dashboard)":
             with col_c2:
                 st.subheader("📅 Spending Timeline")
                 # 方案一：散点图 (气泡图)
-                # X轴是日期，Y轴是金额，点的大小也是金额
+                # X轴是日期，Y轴是金额，点的大小也是金额。用 amount_usd，不是 amount。
+                # size 单独用绝对值——代付回款/退款是负数，气泡大小不能是负的（plotly
+                # 会报错），但纵轴位置和颜色还是用带符号的真实值，负数正常显示在 0 以下。
                 # 同样排除 monthly_summary，不然那一个点会大到看不出真正的 outlier 在哪
                 fig_scatter = px.scatter(
                     df_filtered_txn,
-                    x='date', 
-                    y='amount', 
-                    size='amount',  # 钱越多，泡泡越大
-                    color='amount',
+                    x='date',
+                    y='amount_usd',
+                    size=df_filtered_txn['amount_usd'].abs(),  # 钱越多，泡泡越大
+                    color='amount_usd',
                     hover_data=['notes'], # 鼠标放上去显示备注
                     title="Transaction Timeline (Spot the Outliers)",
                     size_max=30
@@ -338,12 +344,17 @@ elif page == "📊 看账本 (Dashboard)":
             col_c1, col_c2 = st.columns(2)
             with col_c1:
                 # 排除 monthly_summary：一笔汇总的分类是"其他/杂项"之类的占位，混进饼图会
-                # 严重扭曲各分类的真实占比。
-                fig_pie = px.pie(df_filtered_txn, values='amount', names='category', title='Expenses by Category')
+                # 严重扭曲各分类的真实占比。用 amount_usd，不是 amount。
+                # 另外饼图（parts of a whole）没法表示负数——代付回款/退款是负数，
+                # 混进去 plotly 会报错，而且"退款占我支出的百分之多少"这个问法本来
+                # 就没意义，所以饼图这里额外只看正数（真实花出去的钱）。
+                df_pie = df_filtered_txn[df_filtered_txn['amount_usd'] > 0]
+                fig_pie = px.pie(df_pie, values='amount_usd', names='category', title='Expenses by Category')
                 st.plotly_chart(fig_pie, width="stretch")
             with col_c2:
-                cat_sum = df_filtered_txn.groupby('category')['amount'].sum().reset_index()
-                fig_bar = px.bar(cat_sum, x='category', y='amount', color='category', title='Total Amount by Category')
+                # 柱状图不怕负数（退款多的分类会正常显示成 0 以下的柱子），保留全量数据。
+                cat_sum = df_filtered_txn.groupby('category')['amount_usd'].sum().reset_index()
+                fig_bar = px.bar(cat_sum, x='category', y='amount_usd', color='category', title='Total Amount by Category')
                 st.plotly_chart(fig_bar, width="stretch")
     else:
         st.info("No expenses found for this period.")

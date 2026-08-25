@@ -48,8 +48,15 @@ class DBManager:
         df = pd.DataFrame(data)
         # 确保金额是数字
         df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(0.0)
+        # amount_usd 是唯一该拿去 sum 的字段（CNY 行的 amount 是原始人民币数字，
+        # 不能直接跟 USD 加在一起）——之前这里漏了转数字，app.py 一直在用未转换
+        # 的原始 amount 做汇总，等于把人民币和美元当同一个单位相加。
+        # 缺失/坏值时兜底成 amount 本身（历史上 amount_usd 空的老行，多半就是
+        # USD 记录，amount 本身已经是对的）。
+        df['amount_usd'] = pd.to_numeric(df['amount_usd'], errors='coerce')
+        df['amount_usd'] = df['amount_usd'].fillna(df['amount'])
         # 表还是旧的 6 列时，这里会把缺的 8 列补成 NaN，顺序对齐 HEADERS；
-        # 表升级到 14 列之后自动就是原样。app.py 目前只读旧的 6 列，不受影响。
+        # 表升级到 15 列之后自动就是原样。
         return df.reindex(columns=HEADERS)
 
     def add_transaction(self, date, category, amount, notes, type="Expense", payment_method=""):
