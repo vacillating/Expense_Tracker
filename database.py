@@ -105,6 +105,26 @@ class DBManager:
         self.sheet.append_rows(rows_to_add)
         self.get_transactions.clear()
 
+    def update_transaction(self, transaction_id, **fields):
+        # 按 id 找到那一行，更新传入的字段。一次 batch_update 调用，不管改几个
+        # 字段都只打一次 API。fields 的 key 必须是 schema.HEADERS 里的列名。
+        # 目前调用方（app.py 的 data_editor）只允许改 category/notes/
+        # payment_method/date —— amount 故意没开放编辑，因为 amount 联动
+        # amount_usd/currency 换算是另一个问题，见 CLAUDE.md TODO。
+        try:
+            cell = self.sheet.find(transaction_id)
+            row = cell.row
+            updates = []
+            for field, value in fields.items():
+                col_idx = HEADERS.index(field) + 1  # gspread 列号从 1 开始
+                a1 = gspread.utils.rowcol_to_a1(row, col_idx)
+                updates.append({"range": a1, "values": [[value]]})
+            if updates:
+                self.sheet.batch_update(updates, raw=True)
+            self.get_transactions.clear()
+        except Exception as e:
+            st.error(f"更新失败: {e}")
+
     def delete_transaction(self, transaction_id):
         # Google Sheets 删除比较麻烦，需要先找到行号
         try:

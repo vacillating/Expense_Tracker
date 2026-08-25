@@ -387,6 +387,26 @@ elif page == "📊 看账本 (Dashboard)":
                     except Exception as e:
                         st.error(f"删除出错: {e}")
 
+            # --- 编辑逻辑 ---
+            # 范围收窄：只允许改 category/notes/payment_method/date，amount
+            # 在上面 column_config 里锁死了，理论上不会出现在这里，但万一
+            # 出现也不管——update_transaction 只会按传进去的字段更新。
+            if changes["edited_rows"]:
+                for index, edited_fields in changes["edited_rows"].items():
+                    try:
+                        row_id = str(st.session_state["df_current_view"].iloc[index]["id"])
+                        fields = {}
+                        for field, value in edited_fields.items():
+                            if field == "date":
+                                # DateColumn 编辑后给的是 date 对象，转成跟别处一致的字符串格式
+                                value = value.strftime("%Y-%m-%d") if hasattr(value, "strftime") else value
+                            fields[field] = value
+                        db.update_transaction(row_id, **fields)
+                        needs_rerun = True
+                        st.toast(f"✏️ 已更新记录 ID: {row_id}")
+                    except Exception as e:
+                        st.error(f"更新出错: {e}")
+
             # --- 新增逻辑 ---
             if changes["added_rows"]:
                 for row in changes["added_rows"]:
@@ -414,7 +434,10 @@ elif page == "📊 看账本 (Dashboard)":
                 "date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
                 "type": None,
                 "category": st.column_config.SelectboxColumn("Category", options=CATEGORIES, required=True),
-                "amount": st.column_config.NumberColumn("Amount", format="$%.2f", required=True),
+                # amount 故意不可编辑——改金额涉及 amount_usd/currency 要不要联动
+                # 换算，是另一个问题（见 CLAUDE.md TODO）。金额记错了删了重加，
+                # 手动记账场景下金额本来不容易出错。
+                "amount": st.column_config.NumberColumn("Amount", format="$%.2f", required=True, disabled=True),
                 "notes": st.column_config.TextColumn("Notes"),
                 "payment_method": st.column_config.SelectboxColumn("Payment Method", options=PAYMENT_METHODS),
                 # 暂时用不上，隐藏掉；source/merchant 先保留默认显示，看效果再决定要不要也隐藏

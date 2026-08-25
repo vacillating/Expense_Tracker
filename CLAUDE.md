@@ -245,3 +245,10 @@ be generalized into a recurring mechanism or built into future tooling.
       2026-08 and every historical row at the old amount now permanently fails to match.
       Phase 4's trend analysis needs to account for this before it can trust historical
       "was this recurring" classification.
+- [ ] `amount` is deliberately not editable in the data_editor grid (`disabled=True`) — 2026-08
+      decision, not an oversight. Editing amount raises a real question (does `currency`/
+      `amount_usd` need to change too?) that got deferred to unblock category/notes/
+      payment_method/date editing, which was needed immediately. When this gets designed:
+      either force `currency` to be edited in the same action, or add a separate "recompute
+      amount_usd at today's rate" button — don't just let `amount` drift out of sync with
+      `amount_usd`. Until then, a wrong amount gets deleted and re-entered via Quick Log.
