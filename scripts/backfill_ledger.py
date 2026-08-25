@@ -42,13 +42,51 @@ def connect():
     return client.open_by_key(cfg["sheet_key"])
 
 
+def is_negative_settlement(row: dict) -> bool:
+    """Refund/Reimbursement rows with a negative amount don't get auto-imported.
+
+    2026-08 incident: this check used to only run inside an `if _review ==
+    'TRUE':` branch in a one-off cleanup script (never committed anywhere),
+    so any negative Reimbursement/Refund row that the CSV generator was
+    confident about (i.e. NOT flagged _review) sailed straight through. 7
+    rows leaked into the live sheet this way — 5 incoming Zelle "AA还款"
+    (money coming back isn't negative spending, it's cash inflow that
+    doesn't belong in an expense ledger at all) plus a large blanket
+    reimbursement that needed re-tagging as granularity=monthly_summary
+    rather than deletion. Fixed by hand on the live sheet (see
+    scripts/fix_negative_rows.py); this function is what makes the same
+    class of row impossible to sneak through THIS script again, regardless
+    of whether it's flagged for review.
+
+    A negative Refund IS sometimes correct (e.g. a hotel deposit refund
+    netting a specific charge already in the sheet) — those just aren't
+    something this bulk CSV importer should decide on its own; they need a
+    human looking at one row at a time, which is exactly what a manual
+    entry or a reviewed one-off fix gives you.
+    """
+    try:
+        amount = float(str(row.get("amount", 0) or 0).replace(",", ""))
+    except ValueError:
+        return False
+    return row.get("type") in ("Reimbursement", "Refund") and amount < 0
+
+
 def load_ledger(now_iso: str):
     rows = []
+    skipped = []
     with LEDGER.open() as f:
         for r in csv.DictReader(f):
             r.pop("_review", None)      # helper column, not part of the schema
+            if is_negative_settlement(r):
+                skipped.append(r)
+                continue
             r["created_at"] = r.get("created_at") or now_iso
             rows.append(row_from_dict(r))
+    if skipped:
+        print(f"跳过 {len(skipped)} 行负数退款/代付回款（不自动导入，需要人工判断要不要单独加）：")
+        for r in skipped:
+            print(f"  {r.get('date')}  {r.get('amount')} {r.get('currency')}  "
+                  f"{r.get('type')}  {r.get('notes')}")
     return rows
 
 
