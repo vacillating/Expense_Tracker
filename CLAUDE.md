@@ -80,6 +80,52 @@ data model.
 - **No hardcoded personal values.** Categories, fixed-expense templates, and thresholds belong in config, not scattered through the code.
 - **Ask before schema changes.** Adding or renaming a Google Sheet column affects live data and needs a migration plan.
 
+## Data integrity
+
+The Sheets write path has more than one silent-failure mode. "Ask before schema changes" above
+and everything in this section are the same lesson: writing to Google Sheets is not a plain
+database insert, and each of these failure modes needed its own explicit defense before it
+stopped being dangerous.
+
+- **The sheet must never have a Table (表格) object on it.** Google Sheets' `values.append` uses
+  table detection to decide where new rows land. A Table object's boundary does **not** expand
+  when you append to it — every subsequent write lands at the same row just past the boundary,
+  silently overwriting whatever was already there. Check for one after running any migration
+  script (Insert menu / right-click a cell → look for "Table" in the context menu, or check
+  whether a range shows the Table chip in the sheet UI).
+- **`append_row`/`append_rows` must always pass `insert_data_option="INSERT_ROWS"` explicitly**
+  (done in `sheets.py`, not `database.py` — see Stack). Leaving it unset doesn't mean "no
+  opinion" — it falls through to the Sheets API's own default, which is `OVERWRITE` ("find a
+  place to overwrite"), not "append". `gspread` maintainers confirmed in PR #719 that this
+  default is kept for backwards compatibility, not because it's a sensible default. INSERT_ROWS
+  is a true row insert that doesn't depend on table detection at all — even if a Table object
+  reappears on the sheet later, or a blank row sits in the middle of the data, it still can't
+  overwrite existing rows.
+- **Verifying a write means checking where and how much landed, not just that the field values
+  are right.** A corrupted write from this failure mode returns 200, the UI shows "saved", and
+  every field in the row is exactly correct — it's just sitting in the wrong row, having erased
+  what was there. `sheets.py`'s `_append_and_verify()` parses the API response's `updatedRange`
+  and checks the new data landed strictly after the last known row (not merely "no error was
+  raised"). It only requires landing *after* the previously-known last row, not at an exact
+  predicted row number — Streamlit and the Telegram bot can write to the same sheet concurrently,
+  and a write landing further out than predicted just means someone else's row landed first,
+  which is fine; landing at or before it means something got overwritten, which isn't.
+- **`find()` must be column-scoped**, not a full-sheet search. `sheet.find(id)` with no
+  `in_column` will match the same id-shaped string if it ever shows up in `notes` or anywhere
+  else, silently editing or deleting the wrong row. `sheets.find_row()` always searches the `id`
+  column specifically and raises `RowNotFoundError` instead of returning `None` on a miss — this
+  wasn't the cause of the 2026-08 incident, but it's the same category of problem (an API used in
+  a way that "looks like it works").
+
+**2026-08 incident, for context:** a Table object (`表格_1`, range A1:F558) existed on the live
+sheet. All four Quick Log writes on 8/25 landed on row 559 — every one of them, because the
+Table's boundary never moved. Each write overwrote the previous one; 7 rows of real data were
+lost this way, with zero errors anywhere in the chain (Sheets API, gspread, `st.error`, the UI).
+Fixed by hand: converted the Table to a plain range ("Convert to range", **not** "Delete table" —
+that deletes the data too), deleted the corrupted row, verified `Cmd+↓` now lands on the true
+last row. Recovering the specific lost row (a late-Nov-2025 backfill entry) is a separate,
+manual, read-only-diff-first task — not something automated against the live sheet.
+
 ## Conventions
 
 - Code and comments in English. UI strings may be Chinese or bilingual — match whatever the surrounding page already uses.

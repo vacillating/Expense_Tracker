@@ -4,6 +4,7 @@ import hmac
 from datetime import datetime
 import plotly.express as px
 from database import DBManager
+from config import CATEGORIES, PAYMENT_METHODS, FIXED_TEMPLATES
 from io import BytesIO
 
 # Page Config
@@ -36,32 +37,9 @@ if not check_password():
 db = DBManager()
 
 # Constants
-CATEGORIES = [
-    "房租 (Rent)", 
-    "餐饮 (Dine & Grocery)", 
-    "交通 (Transport)", 
-    "购物 (Shopping)", 
-    "娱乐 (Entertainment)",
-    "其他 (Other)",
-    "医疗 (Medical)",
-    "旅行 (Travel)",  # 2026-08 新增：机票/酒店/度假租车单独一类，不跟日常通勤混在"交通"里
-]
-# 支付方式选项 (全局配置，跟 CATEGORIES 一样统一放这里，不要散在各处硬编码)
-PAYMENT_METHODS = [
-    "CMB credit",
-    "Chase debit",
-    "Cathay debit",
-    "WeChat",
-    "cash",
-]
-# 定义固定支出模板 (全局配置)
-# 格式: (Category, Amount, Note) -> 不包含日期，因为日期是动态的
-FIXED_TEMPLATES = [
-    ("房租 (Rent)", 1050.0, "Fixed Rent"),
-    ("其他 (Other)", 25.0, "US Mobile"),
-    ("娱乐 (Entertainment)", 34.93, "Subscription"),
-    ("医疗 (Medical)", 5.0, "降压药")
-]
+# CATEGORIES / PAYMENT_METHODS / FIXED_TEMPLATES 挪进了 config.py（2026-08）——
+# parser.py（Telegram bot 的解析器）也要用这几个常量，但不能 import streamlit，
+# 所以不能从这个文件（app.py）直接拿。
 # 自动提取“固定支出类别”列表 (给智能算法用)
 # 这是一个 Python 推导式：自动把上面列表里的第0个元素(类别)拿出来，组成一个新列表
 # 结果会自动变成: ["房租 (Rent)", "其他 (Other)", ...]
