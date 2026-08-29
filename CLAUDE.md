@@ -253,6 +253,15 @@ manual would optimize the wrong thing.
 3. ~~CMB CSV/summary import~~ — see below. Not an ongoing channel; don't build recurring
    tooling around it.
 
+### Telegram bot: `parser.py` latency (measured 2026-08)
+
+11 live calls to DeepSeek V4 Flash (`tests/test_parser_live.py --run-live`) took 39s total,
+~3.5s average per call. Add one `sheets.get_column()` read (idempotency check) and one
+`sheets.append_rows()` write, and the full webhook chain (Telegram → parse → write → reply)
+should land around **5–6s end to end**. Use this number when picking a serverless platform and
+setting its timeout — it needs enough headroom over 5–6s to survive a slower LLM response
+without the platform killing the function mid-write.
+
 ### CMB backfill — one-time, 2026-05..08 historical catch-up only, obsolete once imported
 
 These notes describe how the *already-completed* 4-month gap was reconstructed

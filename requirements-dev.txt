@@ -1,2 +1,6 @@
 -r requirements.txt
 pytest==7.4.4
+# 只给 tests/conftest.py 自动加载 .env 用（跑 Group B live 测试需要
+# LLM_BASE_URL/LLM_API_KEY/LLM_MODEL）。不进 requirements-bot.txt——
+# 生产代码不该依赖 .env 文件，见 conftest.py 里的说明。
+python-dotenv==1.2.3

@@ -189,3 +189,4 @@ Notes.txt
 .streamlit/secrets.toml
 data/
 *.csv
+.vscode/
