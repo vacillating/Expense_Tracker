@@ -40,6 +40,8 @@ _PAYMENT_METHOD_KEYWORDS = {
     "Chase debit": ["chase"],
     "Cathay debit": ["cathay", "国泰"],
     "cash": ["现金", "cash"],
+    "BoA credit": ["boa", "bofa", "美国银行"],  # 2026-08：新开的 BoA 信用卡
+    "BoA debit": ["boa", "bofa", "美国银行"],   # 2026-08：新开的 BoA 借记卡
 }
 # 防呆：PAYMENT_METHODS 里任何新加的值，如果忘了在上面补关键词，这里会立刻报错，
 # 不会悄悄漏掉——比"prompt 里少一行提示、模型永远猜不出这个新支付方式"这种
@@ -68,7 +70,10 @@ _SYSTEM_PROMPT_TEMPLATE = """你是一个记账解析器。用户发来一句随
 
 每个条目的字段：
   amount            数字。用户写的金额，原样。解析不出就填 null
-  currency          "USD" 或 "CNY"。默认 USD
+  currency          恒定填 "USD"。用户记账时心里已经把金额换算成美元了，
+                     不管原话里出现"块""元""¥"这类词，那些指的也是美元
+                     口语说法，不是人民币——不要因为这些词把 currency 改
+                     成别的值，永远输出 "USD"
   category          必须是下面列表里的一项，原样照抄包括括号
   merchant          花在什么上，尽量简短（如"火锅""打车"）
   notes             用户原话中对应这一笔的部分，一字不改
@@ -166,6 +171,13 @@ def _validate_entry(entry: dict, raw: str) -> dict:
         raise ParseError(f"date 不是 YYYY-MM-DD 格式: {entry.get('date')!r}（原始返回: {raw!r}）")
 
     entry = dict(entry)  # 下面可能要改字段，不动调用方传进来的原对象
+
+    # currency：恒为 USD，2026-08 决定（见 CLAUDE.md）。不只是 prompt 里说一下
+    # 就完了——prompt 只能影响模型大概率的行为，不能保证每次都听话。这里在代码
+    # 里强制覆盖，跟 category/payment_method 的兜底是同一个思路：不依赖 LLM
+    # 100% 守约束，用代码兜底把"恒为 USD"这个不变量焊死。currency 列本身还留着
+    # （给以后回国用），只是 parser 这条路径现在只会写 "USD"。
+    entry["currency"] = "USD"
 
     if entry["category"] not in CATEGORIES:
         entry["category"] = "其他 (Other)"

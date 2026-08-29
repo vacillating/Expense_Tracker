@@ -4,7 +4,7 @@ import hmac
 from datetime import datetime
 import plotly.express as px
 from database import DBManager
-from config import CATEGORIES, PAYMENT_METHODS, FIXED_TEMPLATES
+from config import CATEGORIES, PAYMENT_METHODS, FIXED_TEMPLATES, today_local
 from io import BytesIO
 
 # Page Config
@@ -57,7 +57,7 @@ if page == "➕ 记一笔 (Quick Log)":
     
     with st.form("quick_log_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
-        date = col1.date_input("Date", datetime.today())
+        date = col1.date_input("Date", today_local())
         category = col2.selectbox("Category", CATEGORIES)
         
         col3, col4 = st.columns(2)
@@ -80,7 +80,7 @@ elif page == "📊 看账本 (Dashboard)":
     
     # --- 过滤器 (Sidebar Filters) ---
     st.sidebar.header("Filters")
-    today = datetime.today()
+    today = today_local()  # date 对象，不是 datetime——下面用到 today.date() 的地方要改成直接用 today
     current_year = today.year
     
     # 1. 年份筛选 (增加 All)
@@ -173,7 +173,7 @@ elif page == "📊 看账本 (Dashboard)":
             # --- 核心算法优化 (v3.6 精准剥离版) ---
             
             # A. 截止目前的总支出
-            df_current_progress = df_filtered[df_filtered['date'].dt.date <= today.date()].copy()
+            df_current_progress = df_filtered[df_filtered['date'].dt.date <= today].copy()
             # 剥离固定支出、算日均，都只看逐笔交易——monthly_summary（比如招行汇总）
             # 不是真实的单笔消费，掺进去会把 is_fixed 匹配和日均算法搞乱。
             df_current_progress_txn = df_current_progress[df_current_progress['granularity'] != 'monthly_summary']
@@ -221,7 +221,7 @@ elif page == "📊 看账本 (Dashboard)":
             projected_total = amount_fixed + projected_variable
 
             # E. 加上未来的支出（同样排除 monthly_summary，理由跟上面一致）
-            df_future = df_filtered_txn[df_filtered_txn['date'].dt.date > today.date()]
+            df_future = df_filtered_txn[df_filtered_txn['date'].dt.date > today]
             projected_total += df_future['amount_usd'].sum()
 
             metric_label = "📅 Daily Living Avg (日常日均)"
@@ -391,7 +391,7 @@ elif page == "📊 看账本 (Dashboard)":
                 for row in changes["added_rows"]:
                     try:
                         db.add_transaction(
-                            date=row.get("date", datetime.today().strftime('%Y-%m-%d')),
+                            date=row.get("date", today_local().strftime('%Y-%m-%d')),
                             category=row.get("category", "其他 (Other)"),
                             amount=float(row.get("amount", 0)),
                             notes=row.get("notes", ""),

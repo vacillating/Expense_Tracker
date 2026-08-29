@@ -58,6 +58,67 @@ month-end projection, category charts, Top-N rankings (`app.py`'s `df_filtered_t
 `df_current_progress_txn` do this). Anything that only needs a period total — Total Booked,
 Spent to Date, a future month-over-month trend — should keep it in.
 
+### `currency` is reserved for USD-only, on purpose — not deleted, not converted
+
+**2026-08 decision:** Gary does the mental conversion to USD at the moment he spends, so
+`parser.py` no longer tries to detect currency from wording — `_validate_entry()` forces
+`currency = "USD"` on every entry unconditionally (not just a prompt instruction; LLM prompt
+compliance isn't guaranteed, so it's enforced in code too, same pattern as the
+category/payment_method soft-fallbacks). Words like "块"/"元"/"¥" in a message are just American
+slang for dollars in Gary's usage, not a currency signal.
+
+The `currency` column itself is **kept in the schema, not dropped**, even though every new row
+will read `"USD"`:
+- The sheet already has real historical CNY rows (from the pre-bot manual-entry era and the
+  CMB/WeChat backfill) — dropping the column would permanently erase "this number was originally
+  RMB" for those rows.
+- Column deletion is a destructive migration, strictly more dangerous than adding one (see "Ask
+  before schema changes" above) — there's no upside to doing it now.
+- Gary expects to move back to China at some point, at which point `currency` starts being CNY
+  again for new rows — re-adding a deleted column later would just be paying for this same
+  migration twice.
+
+**Existing CNY rows are left as-is — not retroactively converted to USD.** The raw original
+amount is the one fact that can't be reconstructed once it's converted (a conversion is lossy;
+the reverse isn't recoverable). There's also no single correct rate to convert at — day-of-
+transaction rate? The `CNY_PER_USD = 6.72` flat rate used for the 2026-05..08 backfill? Today's
+rate? None of these is "more correct" than leaving the number as Gary actually spent it.
+`amount_usd` is already populated for every row (including the CNY ones) and is what all
+aggregation/summary code sums — converting `amount` itself would not fix anything that's
+currently broken.
+
+Net effect: `amount` and `amount_usd` are redundant for every row parser.py writes today (both
+always USD) — deliberately not merged into one column, because they'll diverge again the moment
+CNY rows start coming back in.
+
+### `payment_method`: record the specific card, group only in config
+
+**2026-08 decision** (prompted by adding two new Bank of America cards): `PAYMENT_METHODS` in
+`config.py` stays a flat list of specific values (`"BoA credit"`, `"BoA debit"`, `"CMB credit"`,
+etc.) — the schema records exactly which card/channel was used, never a pre-aggregated bucket.
+
+`config.PAYMENT_METHOD_GROUPS` maps each `PAYMENT_METHODS` value to a coarser analysis-only
+bucket ("招行(父亲还款)" / "美国卡" / "微信" / "现金"), grouped by *where the money actually came
+from* — CMB is money Gary's father fronts in RMB and needs to be told about; every US card draws
+from Gary's own USD balance regardless of which bank issued it; cash is the one channel with no
+paper trail at all. This mapping is **config-layer only, never written to the sheet** — every
+row still stores the specific payment method it always did.
+
+Why grouping lives in config and not in the data: granularity only goes one direction. Data
+recorded at the specific-card level can always be rolled up into "美国卡" later, on demand, for
+any analysis. Data recorded pre-aggregated as "美国卡" can never be split back into "was this
+Chase or BoA" — that information is gone the moment it's written that coarse. Recording specific
+and grouping in config keeps every future option open; recording grouped forecloses all of them.
+
+`config.py` enforces `PAYMENT_METHOD_GROUPS` covers every `PAYMENT_METHODS` value at import time
+(`RuntimeError` if not) — same defensive pattern as `parser.py`'s payment-method-keyword
+completeness check, so a newly added payment method can't silently fall out of every future
+group-by chart just because someone forgot to also add it to the grouping dict.
+
+**Not done this round (deliberately deferred):** `app.py`'s Dashboard doesn't use
+`PAYMENT_METHOD_GROUPS` yet — grouped charts are the next round's work, this round only prepared
+the config.
+
 ### Splits / advances-for-others (AA, 垫付) do NOT get their own schema fields
 
 The ledger only ever records the *settled* amount Gary actually kept — never the gross
@@ -126,6 +187,48 @@ that deletes the data too), deleted the corrupted row, verified `Cmd+↓` now la
 last row. Recovering the specific lost row (a late-Nov-2025 backfill entry) is a separate,
 manual, read-only-diff-first task — not something automated against the live sheet.
 
+## Timezone
+
+**2026-08 bug, fixed:** `app.py` used `datetime.today()` for "today" — but Streamlit Cloud's
+server runs UTC, not Gary's local time. Logging an expense after 8pm EDT recorded tomorrow's
+date instead of today's, silently (no error, correct-looking UI). Evidence from the incident: an
+entry logged at 21:31 EDT got `date = 2026-08-28` and `created_at = 2026-08-28T01:31:42` — both
+one day ahead of the user's actual "today".
+
+Fixed by centralizing every "what is today" call into `config.py`, split into two genuinely
+different needs that must not be conflated:
+
+- **User-facing / business-logic dates — `config.today_local()` / `config.now_local()`.** Must
+  reflect the user's actual timezone, read from `APP_TIMEZONE` (env var, default
+  `America/New_York` — Gary is in Atlanta now but may move; changing timezone should mean
+  changing one env var, not redeploying code). Call sites: `app.py`'s Quick Log date default,
+  Dashboard's `is_current_month`/`days_passed`, and (once the webhook entrypoint exists) the
+  `today` passed into `parser.parse_expense()`. Never call `datetime.today()`/`date.today()`
+  directly anywhere else in the project — always go through `config.today_local()`, so timezone
+  logic only needs to change in this one place.
+- **`created_at` audit timestamps — `config.now_utc_iso()`.** Always UTC, ISO 8601, with an
+  explicit `+00:00` marker. Deliberately does *not* follow `APP_TIMEZONE` — an audit timestamp
+  records "when this row was written," an absolute instant, and shouldn't shift retroactively if
+  the configured timezone ever changes. Convert to local time at display time, if ever needed, not
+  at write time. Call sites: `database.py` (`add_transaction`, `add_transactions_bulk`),
+  `bot_handlers.py` (`_entry_to_row`), `scripts/backfill_ledger.py`.
+
+**Old `created_at` data — not touched, and not migrated.** Every `created_at` written before this
+fix is a bare timestamp with no timezone marker (`2026-08-28T01:31:42`, no `+00:00`). Numerically
+these old values *are* UTC (the server was always UTC), so no old data is factually wrong — it's
+only missing the explicit marker new rows now carry. Plan: leave old rows as-is; do not
+backfill-add `+00:00` to historical `created_at` values. Any code that reads `created_at` should
+treat a bare (no-offset) timestamp as UTC and a `+00:00`-suffixed one as also UTC — both parse to
+the same instant, so no reader-side branching is actually needed. `bot_handlers.handle_undo()`'s
+string-comparison sort of `created_at` is unaffected: it only compares among `source == "telegram"`
+rows, a feature that has no historical data predating this fix, so there's no old/new format mix
+in that comparison.
+
+`zoneinfo` (stdlib) needs an IANA timezone database to resolve `ZoneInfo("America/New_York")`,
+which isn't guaranteed to be present in every deploy container — `tzdata` (pure-Python, universal
+wheel) is pinned in `requirements.txt` as a portable fallback, same reasoning as the cp313 wheel
+verification below but with no wheel-availability risk since it's not compiled.
+
 ## Conventions
 
 - Code and comments in English. UI strings may be Chinese or bilingual — match whatever the surrounding page already uses.
@@ -157,6 +260,20 @@ The month-end projection algorithm deliberately strips fixed expenses and projec
 ## Testing
 
 No test suite yet. When adding one, prioritise the projection algorithm and any natural-language parsing — those are the parts where a silent wrong answer is plausible.
+
+### Group B (`tests/test_parser_live.py`, `--run-live`): judge on repeated runs, not one green pass
+
+These hit the real LLM API, so output has genuine sampling randomness — one all-green run does
+not mean the behavior is stable. **2026-08 example, exactly why this rule exists:** the old
+`test_currency_cny_keyword` (asserting `"奶茶28块"` parses to `currency == "CNY"`) failed twice
+in a row, then passed three times in a row, on an unchanged prompt — not a flaky test in the
+"bad test" sense, but a real reflection of the model's non-deterministic sampling on a question
+that doesn't actually have one correct answer ("块" is ambiguous between RMB and casual English
+"bucks" without more context). That test was later removed for an unrelated reason (currency is
+now hardcoded to USD, see Data model above), but the lesson about how to *read* Group B results
+stands: run `--run-live` more than once (3× is a reasonable default) before concluding a prompt
+change did or didn't fix something, and treat a single pass or single failure as inconclusive on
+its own.
 
 ## Deployment
 

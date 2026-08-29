@@ -4,3 +4,8 @@ plotly==6.9.0
 openpyxl==3.1.5
 gspread==6.2.1
 google-auth==2.56.3
+# zoneinfo (stdlib) 需要系统装了 IANA 时区数据库才能用 ZoneInfo("America/New_York")；
+# Streamlit Cloud 的容器不一定带全。tzdata 是纯 Python 打包的 IANA 数据库，装了它
+# zoneinfo 会自动找到用——py2.py3-none-any 通用 wheel，不吃平台/Python 版本，
+# 不用像别的包那样验证 cp313/cp314 wheel 可用性（见 CLAUDE.md 部署那节）。
+tzdata==2026.3

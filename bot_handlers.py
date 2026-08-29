@@ -13,9 +13,10 @@ pandas, which this bot's bundle doesn't want.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 import sheets
+from config import now_utc_iso
 from parser import ParseError, parse_expense
 from schema import normalize_date
 
@@ -70,7 +71,7 @@ def _entry_to_row(entry: dict, update_id, index: int, today: date) -> dict:
         "source": "telegram",
         "external_id": f"tg:{update_id}:{index}",
         "is_recurring": False,
-        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "created_at": now_utc_iso(),
         "granularity": "transaction",
         # 下面三个不是 schema 列，只给 format_receipt 用：
         "category_confident": entry.get("category_confident", True),
@@ -188,10 +189,17 @@ def handle_undo(today: date) -> str:
     所有 external_id 以 'tg:{update_id}:' 开头的行。
 
     created_at 比较用普通字符串比较，不走 normalize_date()——created_at
-    是这段代码自己生成的 ISO 时间戳（datetime.now().isoformat(timespec=
-    "seconds")），永远是补零的 "YYYY-MM-DDTHH:MM:SS"，本身就能正确排序；
-    normalize_date() 还会把时间戳按天取整（内部调用 .normalize()），反而
-    会丢掉"同一天内谁更晚"这个信息，用在这里是错的。
+    是这段代码自己生成的 ISO 时间戳（config.now_utc_iso()，即
+    "YYYY-MM-DDTHH:MM:SS+00:00"，永远是补零的、带统一时区后缀的 UTC
+    时间），字符串序天然等于时间序，不需要额外解析；normalize_date()
+    还会把时间戳按天取整（内部调用 .normalize()），反而会丢掉"同一天内
+    谁更晚"这个信息，用在这里是错的。
+
+    2026-08 时区修复后 created_at 统一带 "+00:00" 后缀；这个后缀是
+    固定长度、固定内容的，不影响同一批新数据之间字符串比较的顺序
+    （比较的是它前面的数字部分，后缀对所有新行都相同）。这里只在
+    source == "telegram" 的行里比较，而 telegram 这条线是本轮改动前还
+    没上线的新功能，不存在新旧格式混着比的历史包袱。
     """
     sheet = sheets.connect()
     records = sheets.get_all_records(sheet)

@@ -1,9 +1,9 @@
 import pandas as pd
 import streamlit as st
 import uuid
-from datetime import datetime
 
 import sheets
+from config import now_utc_iso
 from schema import HEADERS
 
 
@@ -49,7 +49,7 @@ class DBManager:
             "amount_usd": amount,  # Quick Log 目前只收 USD，跟 amount 一致
             "notes": notes,
             "payment_method": payment_method,
-            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "created_at": now_utc_iso(),
         })
         # 写入成功后立刻让缓存失效，避免刚加的记录要等 TTL 过期才显示
         self.get_transactions.clear()
@@ -59,7 +59,7 @@ class DBManager:
         # transactions 是 [(date, cat, amt, note, type)...]
         # is_recurring 由调用方决定，不在这个方法里假设"批量写入 = 固定支出"——
         # Phase 3 的 WeChat/CMB CSV 批量导入也会走这里，那些是日常消费，不是固定支出。
-        created_at = datetime.now().isoformat(timespec="seconds")
+        created_at = now_utc_iso()
         rows_to_add = []
         for t in transactions:
             unique_id = str(uuid.uuid4())

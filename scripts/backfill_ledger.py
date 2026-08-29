@@ -28,6 +28,7 @@ import tomllib
 from google.oauth2.service_account import Credentials
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from config import now_utc_iso  # noqa: E402
 from schema import HEADERS, row_from_dict  # noqa: E402
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -91,8 +92,6 @@ def load_ledger(now_iso: str):
 
 
 def main():
-    import datetime as dt
-
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
@@ -105,7 +104,7 @@ def main():
         print("sheet1 的表头还不是完整 14 列 —— 先跑 migrate_schema.py --apply。")
         sys.exit(1)
 
-    now_iso = dt.datetime.now().isoformat(timespec="seconds")
+    now_iso = now_utc_iso()
     rows = load_ledger(now_iso)
     total = sum(float(r[HEADERS.index("amount_usd")]) for r in rows)
     print(f"backfill ledger: {len(rows)} rows, ${total:,.2f}")
