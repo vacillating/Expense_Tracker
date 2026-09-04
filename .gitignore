@@ -190,3 +190,7 @@ Notes.txt
 data/
 *.csv
 .vscode/
+
+# Vercel CLI project linkage (org/project IDs) — created by `vercel link`/
+# `vercel dev`, local to this machine's Vercel account, not something to share.
+.vercel/

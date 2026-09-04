@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/telegram.py": {
+      "maxDuration": 30,
+      "excludeFiles": "{tests/**,**/test_*.py,scripts/**,data/**,app.py,database.py,README.md,LICENSE,CLAUDE.md,requirements.txt,requirements-dev.txt,.streamlit/**,.vscode/**,.pytest_cache/**,__pycache__/**}"
+    }
+  }
+}

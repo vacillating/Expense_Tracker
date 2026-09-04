@@ -279,10 +279,80 @@ its own.
 
 Pushing to `main` triggers a redeploy on Streamlit Community Cloud. Secrets are configured in the Streamlit Cloud dashboard, not in the repo.
 
+### Two deploy targets, two Python versions
+
+- **Streamlit Community Cloud** runs `app.py` (the Quick Log / Dashboard UI). Python
+  **3.14.7** as of 2026-08/09 (real number from a build log — see below, this has moved since
+  the 3.13.15 first recorded here; the version is **not** pinned by any file in this repo, see
+  next subsection). Deploys automatically on every push to `main`.
+- **Vercel** runs `api/telegram.py` (the Telegram bot webhook). Python pinned to **3.14** via
+  `.python-version` at the repo root (Vercel supports 3.12/3.13/3.14, default 3.12 — see
+  [Vercel Python version docs](https://vercel.com/docs/functions/runtimes/python/python-version)).
+  Chosen to match Streamlit Cloud's 3.14.x as closely as Vercel's supported set allows, to cut
+  down on "behaves differently on the two clouds" surprises. Deploys manually from the Vercel
+  dashboard (not wired to auto-deploy-on-push as of 2026-08). Bundle size cap: **500 MB
+  uncompressed** — Python functions get a higher limit than the general 250 MB Vercel Functions
+  cap (confirmed directly from Vercel's current [Functions limits](https://vercel.com/docs/functions/limitations)
+  docs, 2026-02 changelog). Not a concern at this bot's current dependency list (`openai` +
+  `gspread` + `google-auth` + `pandas` + `requests` and their transitive deps sum to well under
+  100 MB), just recorded here so nobody has to re-derive it later.
+
+`.python-version` only affects Vercel. Confirmed via Streamlit's own docs
+([app-dependencies](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/app-dependencies),
+[deploy](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/deploy)):
+Streamlit Community Cloud's Python version is set via the **"Python version" dropdown in the
+app's Advanced Settings on the dashboard**, not read from any file in the repo — `runtime.txt`
+being ignored (well documented on discuss.streamlit.io) isn't a bug so much as expected, since
+the dashboard setting was always the actual source of truth. Adding `.python-version` for
+Vercel's benefit should not change Streamlit Cloud's behavior at all. Not empirically verified
+by an actual redeploy in this round (no commit/push happened — see "Don't do" in the 2026-08
+webhook-entrypoint work); worth a one-time sanity check (confirm the build log still shows the
+same Python version) after this lands and the next Streamlit Cloud redeploy happens.
+
+### Repo root deliberately has both `pyproject.toml` AND `requirements.txt` — don't "clean this up"
+
+**2026-08 decision, resolving a real conflict found while building `api/telegram.py`.** Vercel's
+Python `/api`-directory functions install dependencies from the project's Root Directory, and
+— confirmed directly from Vercel's own docs — **the install command for `/api` functions cannot
+be customized** ("If you're using Vercel Functions defined in the natively supported `api`
+directory... You cannot customize this Install Command." —
+[Configuring a Build](https://vercel.com/docs/builds/configure-a-build)). This repo's root
+already had a `requirements.txt` for Streamlit (`streamlit`, `pandas`, `plotly`, `openpyxl`,
+...) before the bot existed — with no way to redirect Vercel's installer, a naive single-file
+setup would have installed *that* file for the bot function, dragging `streamlit`/`plotly` into
+the bundle.
+
+**The fix:** `pyproject.toml` at the repo root lists only the bot's dependencies (`openai`,
+`gspread`, `google-auth`, `pandas`, `requests`, exact pins — see the boundary section below).
+Vercel's installer prefers `pyproject.toml` over a sibling `requirements.txt` when there's no
+lockfile — confirmed two ways, not just inferred from doc wording:
+- Vercel's docs list `pyproject.toml`, `requirements.txt`, and `Pipfile.lock` as the three
+  supported dependency files, `pyproject.toml` listed first.
+- **Directly confirmed by Vercel's own build output**, quoted verbatim in
+  [vercel/vercel#14041](https://github.com/vercel/vercel/issues/14041): `"Detected both
+  pyproject.toml and requirements.txt but no lockfile; using pyproject.toml"`. That issue is
+  reporting a *regression* (a specific Vercel CLI version detected `pyproject.toml` correctly
+  but then skipped actual dependency installation, finishing the build in under a second with
+  nothing installed) — so the precedence rule itself is solid, directly-quoted evidence, but it
+  also means the pyproject.toml install *path* has had real bugs before. **Watch the first real
+  deploy's build log closely** — confirm it actually shows packages being installed (not just
+  "detected pyproject.toml"), not just that Root Directory stayed at the default.
+
+Streamlit Cloud only ever reads `requirements.txt` and has no concept of `pyproject.toml`, so it
+keeps working exactly as before, unaffected. Root Directory stays at the default (repo root) —
+no subfolder split needed, so `bot_handlers.py`/`schema.py`/`sheets.py`/`parser.py`/`config.py`
+stay importable from both `app.py` and `api/telegram.py` without any duplication.
+
+**Do not "consolidate" these into one manifest.** Anyone tempted to delete one of them because
+"a repo shouldn't need two dependency files" must understand this mechanism first — deleting
+`pyproject.toml` puts `streamlit`/`plotly` back in the bot's bundle; deleting `requirements.txt`
+(or letting it drift stale) breaks Streamlit Cloud, since that's the only file it reads.
+
 ### Cloud Python version — do not assume it matches local
 
-Streamlit Community Cloud runs **Python 3.13.15** as of 2026-08. It does **not**
-reliably honor `runtime.txt` — multiple upstream reports (streamlit/streamlit
+Streamlit Community Cloud's Python version moves forward on its own and is **not** pinned by
+any file in this repo (see "Two deploy targets" above — it's a dashboard setting). It does
+**not** reliably honor `runtime.txt` — multiple upstream reports (streamlit/streamlit
 GitHub issues, discuss.streamlit.io) describe the platform ignoring a pinned
 Python version and defaulting to whatever it currently supports. Don't rely on
 pinning an older Python to dodge a dependency problem; assume the Cloud
@@ -345,6 +415,64 @@ extensions (`pandas`, `pyarrow`, `numpy`, and anything else that ships
 platform-specific wheels rather than a `py3-none-any` universal one) are the
 ones that need periodic re-verification against the current Cloud Python
 version — pure-Python dependencies don't have this failure mode.
+
+### `requirements.txt` vs `pyproject.toml` — the boundary, and why it leaks
+
+`requirements.txt` is Streamlit Cloud's (`streamlit`, `pandas`, `plotly`, `openpyxl`, `gspread`,
+`google-auth`). `pyproject.toml`'s `dependencies` list is the bot's — no tree-shaking on
+Vercel's Python runtime and a 500 MB unpacked bundle cap for Python functions (see "Cloud
+Python version" below — this is a Python-specific limit, not the general 250 MB one) mean
+whatever's listed there ships as-is, so it must stay to exactly what `api/telegram.py` →
+`bot_handlers.py` → `parser.py`/`sheets.py`/`schema.py`/`config.py` actually import: `openai`,
+`gspread`, `google-auth`, `requests` (used directly by `api/telegram.py` to call Telegram's
+`sendMessage`, not just relied on as whatever gspread happens to pull in transitively), and,
+unavoidably, **`pandas`** — `schema.py` has `import pandas as pd` at module level for
+`normalize_date()`, and Python imports the whole module, so anything importing *any* name from
+`schema.py` (both `sheets.py` and `bot_handlers.py` do) needs pandas installed, no matter how
+small the actually-used surface is. `streamlit`/`plotly`/`openpyxl` must never appear here —
+nothing on the bot's import path needs them. See the section above for why this file coexists
+with `requirements.txt` instead of replacing it.
+
+Versions pinned in `pyproject.toml` are verified the same way as `requirements.txt`
+(`pip download --only-binary=:all: --python-version 3.14 --implementation cp --abi cp314
+--platform manylinux_2_28_x86_64 --platform manylinux2014_x86_64 -d /tmp/wheel_check
+"openai==3.8.0" "gspread==6.2.1" "google-auth==2.57.1" "pandas==3.0.5" "requests==2.34.2"`,
+i.e. the exact pins from `pyproject.toml`'s `dependencies` list — same reasoning as the cp313
+Streamlit Cloud outage, just against Vercel's pinned 3.14 instead. Re-verify whenever a pin
+changes, same as `requirements.txt`.
+
+### Telegram webhook security model
+
+`api/telegram.py` checks two things before doing anything else, both **fail silently with an
+HTTP 200** (never 401/403):
+
+1. `X-Telegram-Bot-Api-Secret-Token` header equals `TELEGRAM_WEBHOOK_SECRET`, compared with
+   `hmac.compare_digest` (not `==`, which short-circuits on the first mismatched byte and leaks
+   timing information about how much of the secret an attacker has guessed correctly).
+2. The update's `message.from.id` equals `TELEGRAM_ALLOWED_USER_ID` — single-user allowlist,
+   same shared-secret-style model as the Streamlit app's password gate (see Known issues).
+
+**Why 200 and not 401 on failure:** a non-200 response tells Telegram to retry-redeliver — and a
+forged request is just as forged on the 5th retry as the 1st, so a real 401/403 would only burn
+function invocations for no benefit. Silently accepting and dropping is the correct response to
+a request that was never going to be legitimate. Both checks log a warning on failure (not just
+drop silently) — that log is the only visibility into whether something is probing this URL.
+Non-`message` update types (`edited_message`, `channel_post`, `callback_query`, ...) are also
+dropped after the secret check but are not a security concern, just routing: `handle_message`/
+`handle_undo` only know what to do with a plain message.
+
+### Environment variables — which platform needs which
+
+| Variable | Streamlit Cloud | Vercel | Notes |
+|---|---|---|---|
+| `GCP_SERVICE_ACCOUNT_JSON` | optional (falls back to `st.secrets`) | **required** | `sheets.py` reads env first, then `st.secrets` — Vercel has no `st.secrets`, so it's required there |
+| `SHEET_KEY` | optional (falls back to `st.secrets`) | **required** | same fallback pattern |
+| `app_password` (in `st.secrets`) | **required** | n/a | Streamlit-only password gate |
+| `APP_TIMEZONE` | optional (default `America/New_York`) | optional | only matters where `today_local()` is called — Vercel's `today` for `parse_expense()` |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | n/a | **required** | `parser.py`, bot-only |
+| `TELEGRAM_BOT_TOKEN` | n/a | **required** | used both to verify webhook calls came in and to call `sendMessage` |
+| `TELEGRAM_WEBHOOK_SECRET` | n/a | **required** | see webhook security model above |
+| `TELEGRAM_ALLOWED_USER_ID` | n/a | **required** | see webhook security model above |
 
 ## Roadmap
 
