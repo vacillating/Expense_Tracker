@@ -119,6 +119,50 @@ group-by chart just because someone forgot to also add it to the grouping dict.
 `PAYMENT_METHOD_GROUPS` yet — grouped charts are the next round's work, this round only prepared
 the config.
 
+### `parser.py` bare numeric dates (`9.1` / `9/1` / `09-01`): position disambiguates, year is never guessed
+
+**2026-08 bug, fixed.** The original prompt only ever defined natural-language dates ("昨天",
+"上周五", "9月1号") — bare numeric M.D/M/D was never mentioned at all, so when a message had two
+numbers the model had nothing to go on but a coin flip. Real incident: "chipotle 11.63 9.1"
+(meant: $11.63 spent on 9/1) parsed to today's date, not 09-01, while "中超采购 51.09 8.31" sent
+in the same batch happened to parse correctly. Both were guesses — one just landed right. That's
+worse than a consistent wrong answer, because a lucky hit teaches the user the format works when
+it doesn't.
+
+**Fix: hard constraint 6 (`parser.py`'s system prompt) — position disambiguates, not shape.**
+When an entry has two numbers, the first is always the amount and the second (if it's shaped
+like a date) is the date. One number alone is always the amount, never a date — "咖啡 9.1" is a
+$9.1 coffee today, not a coffee bought on 9/1. This mirrors the reasoning behind hard constraint
+1 (no arithmetic) and 2 (never guess amount): remove the ambiguity with a rule instead of hoping
+the model picks the more-plausible reading, because "more plausible" is exactly the kind of
+judgment call that produces a correct answer sometimes and a silently wrong one other times.
+
+**Year — deliberately never inferred, always current year.** A bare M.D/M/D date with no year
+resolves to the current calendar year, full stop — the prompt explicitly tells the model *not*
+to flip to last year just because the resulting date would be in the future. This was a real
+design fork: the natural-seeming alternative ("if the date would be in the future, assume last
+year — e.g. writing '12.25' in January probably means last December") was rejected because Gary
+genuinely does log future-dated spending on purpose (a flight bought weeks or months ahead of
+the trip), and there's no reliable threshold that separates "typo, meant last year" from
+"deliberate future date" — any such heuristic is just relocating the same guessing problem from
+"is this a date" to "is this date's year a typo," not eliminating it.
+
+**Known boundary case, accepted, not silently patched over:** in the first weeks of a new year,
+a bare M.D date meaning *last* December (e.g. "12.25" typed in early January, meaning
+2025-12-25) will parse to this year instead unless the user says so explicitly — either with the
+word "去年", or by giving the full date (`2025-12-25`). This is a real, known gap, not an
+oversight: the alternative (guessing based on how far in the future the date would land) trades
+a rare, narrow failure mode (a few weeks each January) for a much more common one (misdating
+every legitimately future-dated purchase for the rest of the year). If this turns out to bite in
+practice, revisit — but don't "fix" it by adding a future-guessing heuristic without discussing
+the tradeoff again.
+
+**Small, unrelated fix bundled into the same round:** the category prompt now has a one-line
+hint that grocery/supermarket purchases — including "中超" (Chinese supermarkets) — go to
+餐饮 (Dine & Grocery), not 购物 (Shopping). Found because "中超采购" was landing in Shopping with
+no ⚠️ (`category_confident: true`) — confidently wrong, which per the Known issues section below
+is worse than an uncertain-but-flagged answer.
+
 ### Splits / advances-for-others (AA, 垫付) do NOT get their own schema fields
 
 The ledger only ever records the *settled* amount Gary actually kept — never the gross

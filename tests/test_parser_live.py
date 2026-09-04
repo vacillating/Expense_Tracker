@@ -58,6 +58,50 @@ def test_relative_date_yesterday():
     assert result[0]["date"] == (TODAY - timedelta(days=1)).isoformat()
 
 
+def test_numeric_date_month_dot_day():
+    """2026-08 发现的解析缺口：两个数字时，第一个是金额，第二个（长得像
+    日期）才是日期——硬约束 6。之前 prompt 里完全没定义过纯数字日期格式，
+    模型只能猜；"chipotle 11.63 9.1" 曾经被解析成"今天"而不是 9 月 1 日。"""
+    result = parse_expense("chipotle 11.63 9.1", TODAY)
+    assert len(result) == 1
+    assert result[0]["amount"] == 11.63
+    assert result[0]["date"] == date(TODAY.year, 9, 1).isoformat()
+
+
+def test_numeric_date_month_dot_day_regression_case():
+    """这条之前就能碰巧解析对（"中超采购 51.09 8.31" -> 08-31），但那是
+    运气好，不是规则生效——加进 Group B 确保 prompt 改了之后这条不会退步。"""
+    result = parse_expense("中超采购 51.09 8.31", TODAY)
+    assert len(result) == 1
+    assert result[0]["amount"] == 51.09
+    assert result[0]["date"] == date(TODAY.year, 8, 31).isoformat()
+
+
+def test_single_number_is_amount_not_mistaken_for_date():
+    """只有一个数字时，按硬约束 6 就是金额，不该被当成日期——"9.1" 不能
+    被误读成"9月1日"而把 amount 判成 null 或者别的。"""
+    result = parse_expense("咖啡 9.1", TODAY)
+    assert len(result) == 1
+    assert result[0]["amount"] == 9.1
+    assert result[0]["date"] == TODAY.isoformat()
+
+
+def test_numeric_date_slash_format():
+    result = parse_expense("打车 15 9/2", TODAY)
+    assert len(result) == 1
+    assert result[0]["amount"] == 15
+    assert result[0]["date"] == date(TODAY.year, 9, 2).isoformat()
+
+
+def test_chinese_supermarket_categorized_as_dine_and_grocery():
+    """较小的顺带修复：中超是华人超市，买的是食材，应该归 餐饮
+    (Dine & Grocery)，不是 购物 (Shopping)——之前会被模型自信地（没有 ⚠️）
+    分到购物，比"不确定"更麻烦。"""
+    result = parse_expense("中超采购 51.09 8.31", TODAY)
+    assert len(result) == 1
+    assert result[0]["category"] == "餐饮 (Dine & Grocery)"
+
+
 def test_payment_method_wechat_keyword():
     result = parse_expense("买菜48 微信", TODAY)
     assert len(result) == 1
