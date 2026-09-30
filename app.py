@@ -4,7 +4,7 @@ import hmac
 from datetime import datetime
 import plotly.express as px
 from database import DBManager
-from config import CATEGORIES, PAYMENT_METHODS, FIXED_TEMPLATES, today_local
+from config import CATEGORIES, FIXED_TEMPLATES, today_local
 from io import BytesIO
 
 # Page Config
@@ -37,7 +37,7 @@ if not check_password():
 db = DBManager()
 
 # Constants
-# CATEGORIES / PAYMENT_METHODS / FIXED_TEMPLATES 挪进了 config.py（2026-08）——
+# CATEGORIES / FIXED_TEMPLATES 挪进了 config.py（2026-08）——
 # parser.py（Telegram bot 的解析器）也要用这几个常量，但不能 import streamlit，
 # 所以不能从这个文件（app.py）直接拿。
 # 自动提取“固定支出类别”列表 (给智能算法用)
@@ -64,12 +64,10 @@ if page == "➕ 记一笔 (Quick Log)":
         amount = col3.number_input("Amount", min_value=0.01, format="%.2f")
         notes = col4.text_input("Notes")
 
-        payment_method = st.selectbox("Payment Method", PAYMENT_METHODS)
-
         submitted = st.form_submit_button("Save Expense", width="stretch")
 
         if submitted:
-            db.add_transaction(date.strftime("%Y-%m-%d"), category, amount, notes, type="Expense", payment_method=payment_method)
+            db.add_transaction(date.strftime("%Y-%m-%d"), category, amount, notes, type="Expense")
             st.success(f"✅ Saved: {category} - ${amount:.2f}")
 
 # Page 2: Dashboard
@@ -367,7 +365,7 @@ elif page == "📊 看账本 (Dashboard)":
                         st.error(f"删除出错: {e}")
 
             # --- 编辑逻辑 ---
-            # 范围收窄：只允许改 category/notes/payment_method/date，amount
+            # 范围收窄：只允许改 category/notes/date，amount
             # 在上面 column_config 里锁死了，理论上不会出现在这里，但万一
             # 出现也不管——update_transaction 只会按传进去的字段更新。
             if changes["edited_rows"]:
@@ -418,7 +416,9 @@ elif page == "📊 看账本 (Dashboard)":
                 # 手动记账场景下金额本来不容易出错。
                 "amount": st.column_config.NumberColumn("Amount", format="$%.2f", required=True, disabled=True),
                 "notes": st.column_config.TextColumn("Notes"),
-                "payment_method": st.column_config.SelectboxColumn("Payment Method", options=PAYMENT_METHODS),
+                # payment_method 功能 2026-09 下线（见 CLAUDE.md）：列还留在表里存着
+                # 历史值，界面上不再显示、不再编辑
+                "payment_method": None,
                 # 暂时用不上，隐藏掉；source/merchant 先保留默认显示，看效果再决定要不要也隐藏
                 "amount_usd": None,
                 "external_id": None,

@@ -18,7 +18,7 @@ Live at [garyexpense.streamlit.app](https://garyexpense.streamlit.app).
 - **Quick Log** — fast entry form for a single transaction, or a one-click "load this
   month's fixed expenses" (rent, phone bill, subscriptions) to skip re-typing recurring costs
 - **Dashboard** — an editable data grid (add/edit/delete rows inline), Plotly charts (spend by
-  category, by payment method), and a **month-end spending projection** that deliberately
+  category), and a **month-end spending projection** that deliberately
   excludes fixed expenses before projecting — a naive `total ÷ days-elapsed` would be thrown off
   by rent landing on the 1st, so the projection is built from variable spending only
 - Password-gated (single shared password via `st.secrets`) — this is a private single-user tool,
@@ -103,7 +103,7 @@ Expense_Tracker/
 ├── database.py           # Sheets I/O wrapped with Streamlit caching, for app.py
 ├── sheets.py              # Pure gspread I/O — no Streamlit/pandas, shared with the bot
 ├── schema.py              # Single source of truth for the sheet's columns
-├── config.py              # Categories, payment methods, timezone helpers — shared config
+├── config.py              # Categories, fixed-expense templates, timezone helpers — shared config
 ├── parser.py               # LLM-based natural-language expense parsing
 ├── bot_handlers.py         # Telegram bot business logic (parse → write → reply, /undo)
 ├── api/telegram.py         # Telegram webhook entry point (Vercel Function)
@@ -149,8 +149,6 @@ which platform needs which.
 - [x] Telegram bot: natural-language entry, idempotent writes, `/undo`
 - [ ] Bank statement import (Chase / Cathay) — see `CLAUDE.md`'s Roadmap for why this comes
       *after* the bot, not before
-- [ ] Grouped payment-method charts on the Dashboard (`config.PAYMENT_METHOD_GROUPS` exists,
-      not wired into the UI yet)
 
 `CLAUDE.md` is the actual living design doc — every non-obvious decision, past incident, and
 rejected alternative is recorded there with its reasoning. This README is the map; that's the

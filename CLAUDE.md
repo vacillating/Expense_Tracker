@@ -64,7 +64,7 @@ Spent to Date, a future month-over-month trend — should keep it in.
 `parser.py` no longer tries to detect currency from wording — `_validate_entry()` forces
 `currency = "USD"` on every entry unconditionally (not just a prompt instruction; LLM prompt
 compliance isn't guaranteed, so it's enforced in code too, same pattern as the
-category/payment_method soft-fallbacks). Words like "块"/"元"/"¥" in a message are just American
+category soft-fallback). Words like "块"/"元"/"¥" in a message are just American
 slang for dollars in Gary's usage, not a currency signal.
 
 The `currency` column itself is **kept in the schema, not dropped**, even though every new row
@@ -91,33 +91,27 @@ Net effect: `amount` and `amount_usd` are redundant for every row parser.py writ
 always USD) — deliberately not merged into one column, because they'll diverge again the moment
 CNY rows start coming back in.
 
-### `payment_method`: record the specific card, group only in config
+### `payment_method`: feature retired 2026-09, column kept
 
-**2026-08 decision** (prompted by adding two new Bank of America cards): `PAYMENT_METHODS` in
-`config.py` stays a flat list of specific values (`"BoA credit"`, `"BoA debit"`, `"CMB credit"`,
-etc.) — the schema records exactly which card/channel was used, never a pre-aggregated bucket.
+**2026-09 decision:** the payment-method feature was removed end to end — Quick Log's
+selectbox, the data-grid column (now hidden), `parser.py`'s keyword hints / prompt field /
+validation, the Telegram receipt line, and `config.PAYMENT_METHODS` / `PAYMENT_METHOD_GROUPS`.
+Reason: with Telegram as the main entry path, Gary essentially never states a payment method
+when logging, so the field was empty on nearly every new row — a feature nobody feeds is just
+code to maintain and a prompt field for the LLM to get wrong.
 
-`config.PAYMENT_METHOD_GROUPS` maps each `PAYMENT_METHODS` value to a coarser analysis-only
-bucket ("招行(父亲还款)" / "美国卡" / "微信" / "现金"), grouped by *where the money actually came
-from* — CMB is money Gary's father fronts in RMB and needs to be told about; every US card draws
-from Gary's own USD balance regardless of which bank issued it; cash is the one channel with no
-paper trail at all. This mapping is **config-layer only, never written to the sheet** — every
-row still stores the specific payment method it always did.
+**The `payment_method` column stays in `schema.py`** — same reasoning as keeping `currency`
+(see above): the sheet has real historical values from the CMB/Chase/WeChat backfill, dropping
+the column would erase them permanently, and column deletion is a destructive migration. New
+rows get `""` via `schema.DEFAULTS`. `parser.py` drops any stray `payment_method` key the LLM
+still emits, so nothing leaks into the sheet.
 
-Why grouping lives in config and not in the data: granularity only goes one direction. Data
-recorded at the specific-card level can always be rolled up into "美国卡" later, on demand, for
-any analysis. Data recorded pre-aggregated as "美国卡" can never be split back into "was this
-Chase or BoA" — that information is gone the moment it's written that coarse. Recording specific
-and grouping in config keeps every future option open; recording grouped forecloses all of them.
-
-`config.py` enforces `PAYMENT_METHOD_GROUPS` covers every `PAYMENT_METHODS` value at import time
-(`RuntimeError` if not) — same defensive pattern as `parser.py`'s payment-method-keyword
-completeness check, so a newly added payment method can't silently fall out of every future
-group-by chart just because someone forgot to also add it to the grouping dict.
-
-**Not done this round (deliberately deferred):** `app.py`'s Dashboard doesn't use
-`PAYMENT_METHOD_GROUPS` yet — grouped charts are the next round's work, this round only prepared
-the config.
+**What was lost, knowingly:** the original point of `PAYMENT_METHOD_GROUPS` was being able to
+isolate the CMB portion (money Gary's father repays in RMB and needs an accounting of). That
+analysis is no longer possible from new data in this app — Gary accepted this tradeoff when
+retiring the feature. If it's needed again, re-adding it is a code change, not a migration
+(the column is still there), but note that granularity only goes one way: rows logged during
+the gap will have no payment method, and that can't be backfilled from the ledger alone.
 
 ### `parser.py` bare numeric dates (`9.1` / `9/1` / `09-01`): position disambiguates, year is never guessed
 
@@ -582,7 +576,7 @@ be generalized into a recurring mechanism or built into future tooling.
 - [ ] Resolve the two disputed $36 backfill rows (SUSHI LOVER 5/4, Zelle→Caroline Kuo 5/6) —
       held out of the import, need to check real bank records before deciding whether either
       is a duplicate of the existing "韩餐" row.
-- [ ] Move `CATEGORIES` / `FIXED_TEMPLATES` / `PAYMENT_METHODS` out of `app.py` into a
+- [ ] Move `CATEGORIES` / `FIXED_TEMPLATES` out of `app.py` into a
       dedicated config module — they're all "no hardcoded personal values" territory per
       the Hard rules above, currently just living directly in `app.py` by precedent.
 - [ ] `FIXED_TEMPLATES` has no time dimension (see Known issues) — rent went 600→1050 in

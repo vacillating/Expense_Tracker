@@ -37,7 +37,7 @@ class DBManager:
         # 表升级之后自动就是原样。
         return df.reindex(columns=HEADERS)
 
-    def add_transaction(self, date, category, amount, notes, type="Expense", payment_method=""):
+    def add_transaction(self, date, category, amount, notes, type="Expense"):
         # 生成一个唯一 ID (UUID)，方便以后删除
         unique_id = str(uuid.uuid4())
         sheets.append_row(self.sheet, {
@@ -48,7 +48,6 @@ class DBManager:
             "amount": amount,
             "amount_usd": amount,  # Quick Log 目前只收 USD，跟 amount 一致
             "notes": notes,
-            "payment_method": payment_method,
             "created_at": now_utc_iso(),
         })
         # 写入成功后立刻让缓存失效，避免刚加的记录要等 TTL 过期才显示
@@ -82,7 +81,7 @@ class DBManager:
 
     def update_transaction(self, transaction_id, **fields):
         # 按 id 找到那一行，更新传入的字段。目前调用方（app.py 的 data_editor）
-        # 只允许改 category/notes/payment_method/date —— amount 故意没开放
+        # 只允许改 category/notes/date —— amount 故意没开放
         # 编辑，因为 amount 联动 amount_usd/currency 换算是另一个问题，
         # 见 CLAUDE.md TODO。
         try:

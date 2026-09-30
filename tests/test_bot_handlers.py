@@ -19,13 +19,11 @@ def _mock_connect(monkeypatch):
 
 
 def _entry(amount=60, category="餐饮 (Dine & Grocery)", currency="USD",
-           merchant="火锅", notes="火锅60", payment_method="", date_="2026-08-26",
-           confident=True, payment_confident=True):
+           merchant="火锅", notes="火锅60", date_="2026-08-26", confident=True):
     return {
         "amount": amount, "currency": currency, "category": category,
-        "merchant": merchant, "notes": notes, "payment_method": payment_method,
+        "merchant": merchant, "notes": notes,
         "date": date_, "category_confident": confident,
-        "payment_method_confident": payment_confident,
     }
 
 
@@ -154,28 +152,15 @@ def test_parse_error_gives_explicit_reply_not_silent():
 
 # ---------------------------------------------------------------- format_receipt
 
-def test_format_receipt_shows_payment_method_when_present():
-    row = bot_handlers._entry_to_row(_entry(payment_method="Chase debit"), 1, 0, date(2026, 8, 26))
+def test_payment_method_column_written_empty_and_not_in_receipt():
+    """payment_method 2026-09 下线：列还在 schema 里，新行写成空字符串
+    （schema.DEFAULTS），回执里不再出现支付方式那一行。"""
+    from schema import row_from_dict, HEADERS
+    row = bot_handlers._entry_to_row(_entry(), 1, 0, date(2026, 8, 26))
+    written = row_from_dict(row)
+    assert written[HEADERS.index("payment_method")] == ""
     text = bot_handlers.format_receipt([row])
-    assert "Chase debit" in text
-
-
-def test_format_receipt_omits_payment_method_when_simply_absent():
-    """用户就是没提支付方式（合法的空字符串，payment_method_confident 保持
-    默认 True）——不该显示任何提示。"""
-    row = bot_handlers._entry_to_row(_entry(payment_method="", payment_confident=True), 1, 0, date(2026, 8, 26))
-    text = bot_handlers.format_receipt([row])
-    assert "未知" not in text
-    assert "⚠️ 支付方式" not in text
-
-
-def test_format_receipt_shows_warning_when_payment_method_unrecognized():
-    """软失败：payment_method 被 parser 回落成空字符串（payment_method_confident
-    =False）——这跟"用户没提"是两回事，必须在回执里可见，不能悄悄显示成
-    什么都没说过。"""
-    row = bot_handlers._entry_to_row(_entry(payment_method="", payment_confident=False), 1, 0, date(2026, 8, 26))
-    text = bot_handlers.format_receipt([row])
-    assert "⚠️ 支付方式没识别出来" in text
+    assert "支付方式" not in text
 
 
 def test_format_receipt_marks_low_confidence_category():
@@ -185,7 +170,7 @@ def test_format_receipt_marks_low_confidence_category():
 
 
 def test_format_receipt_no_warning_when_confident():
-    row = bot_handlers._entry_to_row(_entry(confident=True, payment_confident=True), 1, 0, date(2026, 8, 26))
+    row = bot_handlers._entry_to_row(_entry(confident=True), 1, 0, date(2026, 8, 26))
     text = bot_handlers.format_receipt([row])
     assert "⚠️" not in text
 

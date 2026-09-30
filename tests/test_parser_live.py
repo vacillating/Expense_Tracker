@@ -102,29 +102,6 @@ def test_chinese_supermarket_categorized_as_dine_and_grocery():
     assert result[0]["category"] == "餐饮 (Dine & Grocery)"
 
 
-def test_payment_method_wechat_keyword():
-    result = parse_expense("买菜48 微信", TODAY)
-    assert len(result) == 1
-    assert result[0]["payment_method"] == "WeChat"
-
-
-def test_payment_method_absent_is_empty_string():
-    result = parse_expense("理发30", TODAY)
-    assert len(result) == 1
-    assert result[0]["payment_method"] == ""
-
-
-def test_boa_keyword():
-    """2026-08：新开的 BoA 信用卡/借记卡，验证识别词能命中 PAYMENT_METHODS 里
-    的某个 BoA 值。故意不锁死到底是 "BoA credit" 还是 "BoA debit"——
-    "boa"/"bofa"/"美国银行" 这三个词本身不区分信用卡还是借记卡（config.py 里
-    两个条目共享同一组识别词），这是真实存在的歧义，不是测试该断死的地方；
-    这条测试守的是"至少能落到 BoA 系列而不是掉回空字符串或其他银行"。"""
-    result = parse_expense("超市买菜80 boa", TODAY)
-    assert len(result) == 1
-    assert result[0]["payment_method"] in ("BoA credit", "BoA debit")
-
-
 def test_currency_is_always_usd_regardless_of_wording():
     """2026-08 决定：Gary 记账时已经心算成美元了，currency 恒为 "USD"——
     "块""元""¥"这些词在他这里说的也是美元，不是人民币暗示。

@@ -29,26 +29,7 @@ from datetime import date
 
 from openai import OpenAI
 
-from config import CATEGORIES, PAYMENT_METHODS
-
-# 商户名/关键词 -> PAYMENT_METHODS 里的规范值。用这个字典生成 prompt 里的
-# 识别词提示，保证模型吐出来的字符串跟 config.py 里的值一字不差（大小写也要
-# 对得上，不然写进表里会跟 SelectboxColumn 的 options 对不上）。
-_PAYMENT_METHOD_KEYWORDS = {
-    "WeChat": ["微信", "wechat"],
-    "CMB credit": ["招行", "cmb"],
-    "Chase debit": ["chase"],
-    "Cathay debit": ["cathay", "国泰"],
-    "cash": ["现金", "cash"],
-    "BoA credit": ["boa", "bofa", "美国银行"],  # 2026-08：新开的 BoA 信用卡
-    "BoA debit": ["boa", "bofa", "美国银行"],   # 2026-08：新开的 BoA 借记卡
-}
-# 防呆：PAYMENT_METHODS 里任何新加的值，如果忘了在上面补关键词，这里会立刻报错，
-# 不会悄悄漏掉——比"prompt 里少一行提示、模型永远猜不出这个新支付方式"这种
-# 静默问题要好发现得多。
-_missing = set(PAYMENT_METHODS) - set(_PAYMENT_METHOD_KEYWORDS)
-if _missing:
-    raise RuntimeError(f"parser.py: PAYMENT_METHODS 里有值没配识别词: {_missing}")
+from config import CATEGORIES
 
 
 class ParseError(Exception):
@@ -77,7 +58,6 @@ _SYSTEM_PROMPT_TEMPLATE = """你是一个记账解析器。用户发来一句随
   category          必须是下面列表里的一项，原样照抄包括括号
   merchant          花在什么上，尽量简短（如"火锅""打车"）
   notes             用户原话中对应这一笔的部分，一字不改
-  payment_method    用户明确说了才填，否则填 ""
   date              YYYY-MM-DD。默认今天。除了"昨天""上周五""9月1号"这类
                      自然语言，也支持纯数字的 M.D / M/D / MM-DD 格式
                      （9.1、9/1、09-01 都是 9 月 1 日）——怎么跟金额区分见
@@ -94,10 +74,6 @@ category 可选值（必须严格是这些字符串之一，一字不能改）�
 分类提示（不改变上面这份允许值列表，只是拿不准时的参考）：
   超市/杂货采购（含"中超"这类华人超市） → 餐饮 (Dine & Grocery)，
   不要归到 购物 (Shopping)——买的是食材，不是普通商品消费。
-
-payment_method 的识别词：
-{payment_method_hints}
-  没提到 → ""
 
 【硬约束，任何情况下不得违反】
 
@@ -130,13 +106,9 @@ payment_method 的识别词：
 
 def _build_system_prompt(today: date) -> str:
     categories_block = "\n".join(f"  {c}" for c in CATEGORIES)
-    hint_lines = [
-        f"  {'/'.join(_PAYMENT_METHOD_KEYWORDS[pm])} → {pm}" for pm in PAYMENT_METHODS
-    ]
     return _SYSTEM_PROMPT_TEMPLATE.format(
         today=today.isoformat(),
         categories=categories_block,
-        payment_method_hints="\n".join(hint_lines),
     )
 
 
@@ -152,7 +124,7 @@ def _strip_markdown_fence(text: str) -> str:
 
 _REQUIRED_FIELDS = {
     "amount", "currency", "category", "merchant", "notes",
-    "payment_method", "date", "category_confident",
+    "date", "category_confident",
 }
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -164,13 +136,15 @@ def _validate_entry(entry: dict, raw: str) -> dict:
     分级校验，不是所有字段错了都一样严重：
       amount / date 不合法 -> 硬失败，抛 ParseError。账本里的数字/日期错了
       没法将就，宁可这一条整个失败也不能记错。
-      category / payment_method 不合法 -> 软失败，回落到安全值。模型把
+      category 不合法 -> 软失败，回落到安全值。模型把
       "其他 (Other)" 打成 "其他(Other)"（少一个空格）这种小瑕疵，如果直接
       整条 ParseError，金额和描述明明都是对的却被一起丢掉，惩罚跟错误不
       成比例。回落不是静默——category 回落会强制 category_confident=False，
-      payment_method 回落会标 payment_method_confident=False，这两个都会
       在 format_receipt() 的回执里带 ⚠️ 显示出来，用户看得见，不是"看起来
       记对了、其实记错了"。
+
+    payment_method 2026-09 整个下线（见 CLAUDE.md）：prompt 不再要这个字段。
+    模型偶尔手滑还吐出来的话，这里直接丢掉，不让它流到下游写进表里。
     """
     if not isinstance(entry, dict):
         raise ParseError(f"条目不是对象: {entry!r}（原始返回: {raw!r}）")
@@ -193,7 +167,7 @@ def _validate_entry(entry: dict, raw: str) -> dict:
 
     # currency：恒为 USD，2026-08 决定（见 CLAUDE.md）。不只是 prompt 里说一下
     # 就完了——prompt 只能影响模型大概率的行为，不能保证每次都听话。这里在代码
-    # 里强制覆盖，跟 category/payment_method 的兜底是同一个思路：不依赖 LLM
+    # 里强制覆盖，跟 category 的兜底是同一个思路：不依赖 LLM
     # 100% 守约束，用代码兜底把"恒为 USD"这个不变量焊死。currency 列本身还留着
     # （给以后回国用），只是 parser 这条路径现在只会写 "USD"。
     entry["currency"] = "USD"
@@ -202,9 +176,7 @@ def _validate_entry(entry: dict, raw: str) -> dict:
         entry["category"] = "其他 (Other)"
         entry["category_confident"] = False
 
-    entry["payment_method_confident"] = entry["payment_method"] in (*PAYMENT_METHODS, "")
-    if not entry["payment_method_confident"]:
-        entry["payment_method"] = ""
+    entry.pop("payment_method", None)
 
     return entry
 

@@ -48,11 +48,13 @@ def _date_label(date_str: str, today: date) -> str:
 
 
 def _entry_to_row(entry: dict, update_id, index: int, today: date) -> dict:
-    """parser.py 吐出来的一条 entry -> schema 的行（外加三个额外 key，
-    category_confident / payment_method_confident / _date_label，只给
-    format_receipt 用于显示，真正写表时 schema.row_from_dict() 只认
-    HEADERS 里的列名，这三个额外字段会被自动忽略，不会真的写进表——
-    不需要专门去掉）。
+    """parser.py 吐出来的一条 entry -> schema 的行（外加两个额外 key，
+    category_confident / _date_label，只给 format_receipt 用于显示，真正
+    写表时 schema.row_from_dict() 只认 HEADERS 里的列名，这两个额外字段
+    会被自动忽略，不会真的写进表——不需要专门去掉）。
+
+    payment_method 不在这里设置：功能 2026-09 下线，列还在 schema 里，
+    row_from_dict() 会按 schema.DEFAULTS 填空字符串。
     """
     amount = entry["amount"]
     currency = entry.get("currency") or "USD"
@@ -67,15 +69,13 @@ def _entry_to_row(entry: dict, update_id, index: int, today: date) -> dict:
         "amount_usd": _amount_usd(amount, currency),
         "merchant": entry.get("merchant", ""),
         "notes": entry.get("notes", ""),
-        "payment_method": entry.get("payment_method", ""),
         "source": "telegram",
         "external_id": f"tg:{update_id}:{index}",
         "is_recurring": False,
         "created_at": now_utc_iso(),
         "granularity": "transaction",
-        # 下面三个不是 schema 列，只给 format_receipt 用：
+        # 下面两个不是 schema 列，只给 format_receipt 用：
         "category_confident": entry.get("category_confident", True),
-        "payment_method_confident": entry.get("payment_method_confident", True),
         "_date_label": _date_label(entry_date, today),
     }
 
@@ -128,12 +128,8 @@ def format_receipt(rows: list[dict]) -> str:
     成回执文本。
 
     规则：
-    - payment_method 为空且没有识别失败（用户本来就没说）就不显示那一段，
-      不显示"未知"；payment_method_confident 为 false（识别失败被回落成
-      空）时改显示 ⚠️ 提示，不是悄悄什么都不显示——软失败不是静默失败
-    - category_confident 为 false 时分类后面加 ⚠️
-    （这两个 confident 字段都不是表里的列，只用于这里显示——15 列里没有
-      它们，要加列得走 CLAUDE.md 里两次提交的规则，今晚不做）
+    - category_confident 为 false 时分类后面加 ⚠️（这个字段不是表里的列，
+      只用于这里显示）
     - amount 缺失（_unparsed 标记）的条目改成提示重发
     - 多笔时每笔一行，/undo 整条消息只出现一次（撤销的是这条消息产生的
       全部行，不是某一笔）
@@ -155,10 +151,6 @@ def format_receipt(rows: list[dict]) -> str:
 
         symbol = "¥" if r["currency"] == "CNY" else "$"
         line = f"✅ {symbol}{float(r['amount']):.2f} · {category} · {r['_date_label']}\n   {r['notes']}"
-        if r.get("payment_method"):
-            line += f"\n   {r['payment_method']}"
-        elif not r.get("payment_method_confident", True):
-            line += "\n   ⚠️ 支付方式没识别出来"
         lines.append(line)
 
     if any_written:

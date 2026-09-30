@@ -35,7 +35,7 @@ def _env(monkeypatch):
 
 VALID_ENTRY = {
     "amount": 60, "currency": "USD", "category": "餐饮 (Dine & Grocery)",
-    "merchant": "火锅", "notes": "火锅60", "payment_method": "",
+    "merchant": "火锅", "notes": "火锅60",
     "date": "2026-08-26", "category_confident": True,
 }
 
@@ -43,21 +43,21 @@ VALID_ENTRY = {
 def test_parses_valid_json_array():
     with patch("parser.OpenAI", return_value=_mock_client(json.dumps([VALID_ENTRY]))):
         result = parse_expense("火锅60", date(2026, 8, 26))
-    assert result == [dict(VALID_ENTRY, payment_method_confident=True)]
+    assert result == [VALID_ENTRY]
 
 
 def test_strips_markdown_code_fence_with_json_tag():
     wrapped = "```json\n" + json.dumps([VALID_ENTRY]) + "\n```"
     with patch("parser.OpenAI", return_value=_mock_client(wrapped)):
         result = parse_expense("火锅60", date(2026, 8, 26))
-    assert result == [dict(VALID_ENTRY, payment_method_confident=True)]
+    assert result == [VALID_ENTRY]
 
 
 def test_strips_markdown_code_fence_without_json_tag():
     wrapped = "```\n" + json.dumps([VALID_ENTRY]) + "\n```"
     with patch("parser.OpenAI", return_value=_mock_client(wrapped)):
         result = parse_expense("火锅60", date(2026, 8, 26))
-    assert result == [dict(VALID_ENTRY, payment_method_confident=True)]
+    assert result == [VALID_ENTRY]
 
 
 def test_empty_array_is_valid_not_an_error():
@@ -90,20 +90,14 @@ def test_unknown_category_soft_fails_to_other_with_low_confidence():
     assert result[0]["amount"] == 60  # 其他字段不受影响
 
 
-def test_unknown_payment_method_soft_fails_to_empty_string():
-    bad = dict(VALID_ENTRY, payment_method="支付宝")  # 不在 config.PAYMENT_METHODS 里
-    with patch("parser.OpenAI", return_value=_mock_client(json.dumps([bad]))):
-        result = parse_expense("火锅60", date(2026, 8, 26))
-    assert result[0]["payment_method"] == ""
-    assert result[0]["payment_method_confident"] is False
-    assert result[0]["category_confident"] is True  # payment_method 的问题不该连累 category
-
-
-def test_valid_payment_method_is_confident():
-    ok = dict(VALID_ENTRY, payment_method="Chase debit")
-    with patch("parser.OpenAI", return_value=_mock_client(json.dumps([ok]))):
+def test_stray_payment_method_from_llm_is_dropped():
+    """payment_method 2026-09 下线：prompt 不再要这个字段，但模型偶尔手滑
+    还会吐出来——不该让它流到下游写进表里，也不该因此整条失败。"""
+    stray = dict(VALID_ENTRY, payment_method="Chase debit")
+    with patch("parser.OpenAI", return_value=_mock_client(json.dumps([stray]))):
         result = parse_expense("火锅60 chase", date(2026, 8, 26))
-    assert result[0]["payment_method_confident"] is True
+    assert "payment_method" not in result[0]
+    assert result[0]["amount"] == 60
 
 
 def test_non_numeric_amount_hard_fails():
@@ -149,10 +143,9 @@ def test_system_prompt_includes_all_categories_from_config():
         assert c in prompt
 
 
-def test_system_prompt_includes_all_payment_methods_from_config():
+def test_system_prompt_no_longer_asks_for_payment_method():
     prompt = parser._build_system_prompt(date(2026, 8, 26))
-    for pm in parser.PAYMENT_METHODS:
-        assert pm in prompt
+    assert "payment_method" not in prompt
 
 
 @pytest.mark.parametrize("missing_var", ["LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL"])
